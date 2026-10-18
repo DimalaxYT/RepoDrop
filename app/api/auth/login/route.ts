@@ -9,11 +9,10 @@ import { config } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(): Promise<Response> {
+export async function GET(req: Request): Promise<Response> {
   if (!config.github.configured) {
-    return NextResponse.redirect(
-      new URL("/login?error=config", config.appUrl),
-    );
+    // Base = URL entrante : fonctionne derrière un proxy de preview.
+    return NextResponse.redirect(new URL("/login?error=config", req.url));
   }
 
   const state = randomBytes(16).toString("hex");

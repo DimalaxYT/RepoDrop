@@ -11,13 +11,13 @@ import { setSessionCookie } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(): Promise<Response> {
+export async function GET(req: Request): Promise<Response> {
   if (!config.devAuth) {
-    return NextResponse.redirect(new URL("/login?error=config", config.appUrl));
+    return NextResponse.redirect(new URL("/login?error=config", req.url));
   }
   const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN ?? "";
   if (!token) {
-    return NextResponse.redirect(new URL("/login?error=devauth", config.appUrl));
+    return NextResponse.redirect(new URL("/login?error=devauth", req.url));
   }
   try {
     const viewer = await getViewer(token);
@@ -29,7 +29,7 @@ export async function GET(): Promise<Response> {
     });
   } catch (e) {
     console.error("[dev-login] /user en échec:", e);
-    return NextResponse.redirect(new URL("/login?error=devauth", config.appUrl));
+    return NextResponse.redirect(new URL("/login?error=devauth", req.url));
   }
-  return NextResponse.redirect(new URL("/import", config.appUrl));
+  return NextResponse.redirect(new URL("/import", req.url));
 }

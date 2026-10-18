@@ -17,8 +17,10 @@ export async function GET(req: Request): Promise<Response> {
   const jar = await cookies();
   const expected = jar.get("rd_oauth")?.value;
 
+  // Redirections basées sur l'URL ENTRANTE (proxy de preview compatible) ;
+  // seul redirect_uri (envoyé à GitHub) doit correspondre à APP_URL.
   const fail = (reason: string) =>
-    NextResponse.redirect(new URL(`/login?error=${reason}`, config.appUrl));
+    NextResponse.redirect(new URL(`/login?error=${reason}`, req.url));
 
   if (!code || !state || !expected || state !== expected) {
     return fail("state");
@@ -72,5 +74,5 @@ export async function GET(req: Request): Promise<Response> {
     return fail("oauth");
   }
 
-  return NextResponse.redirect(new URL("/import", config.appUrl));
+  return NextResponse.redirect(new URL("/import", req.url));
 }
