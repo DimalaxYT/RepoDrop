@@ -40,7 +40,7 @@ Variables importantes :
 
 | Variable | Rôle | Défaut |
 |---|---|---|
-| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | OAuth App GitHub | — |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | OAuth App GitHub. **Important :** déclarer les scopes `repo` et `workflow` dans l'OAuth App (sans `workflow`, GitHub rejette les push qui touchent à `/.github/workflows/`). | — |
 | `APP_URL` | URL publique (callback OAuth) | `http://localhost:3000` |
 | `SESSION_SECRET` | Chiffrement du cookie de session | — |
 | `DEV_AUTH=1` | Bouton « connexion directe » via `GH_TOKEN` du serveur (**dev uniquement**) | off |
@@ -62,11 +62,31 @@ cp .env.example .env   # remplir les valeurs
 docker compose up -d --build
 ```
 
+### 4. Derrière un proxy (preview, ingress, tunnel)
+
+L'app est prévue pour tourner derrière un proxy qui termine le TLS :
+
+- les **redirections** sont *relatives* (`Location: /import`) : le navigateur les
+  résout sur l'origine courante — jamais sur l'adresse interne du serveur
+  (`0.0.0.0`, qui n'est pas navigable) ;
+- le cookie de session est marqué `Secure` seulement si la requête arrive
+  vraiment en HTTPS (`x-forwarded-proto`, ou `APP_URL` si l'hôte correspond) ;
+- `APP_URL` doit pointer sur l'URL publique **et** correspondre à l'URL de
+  callback déclarée dans l'OAuth App GitHub.
+
+En développement, `next.config.ts` autorise les origines de preview via
+`allowedDevOrigins` (sinon Next bloque les ressources `/_next/*`).
+
+```bash
+# écouter sur toutes les interfaces (obligatoire derrière un proxy)
+npx next dev -H 0.0.0.0 -p 10000
+```
+
 ---
 
 ## Utilisation
 
-1. **Connexion** avec GitHub (scope `repo` uniquement).
+1. **Connexion** avec GitHub (scopes `repo` et `workflow` — sinon GitHub rejette les push qui écrivent dans `.github/workflows/`). L'écran de connexion liste ces scopes et leur raison.
 2. **Importer** → glisser-déposer du `.rar` / `.zip`.
 3. **Aperçu** : fichiers, poids, dossier racine, `node_modules`, filtres.
 4. **Destination** :
@@ -74,6 +94,12 @@ docker compose up -d --build
    - **Dépôt existant** : choisissez parmi vos dépôts (droits d'écriture vérifiés côté API) ;
    - option **branche dédiée** pour ne jamais toucher à la branche par défaut.
 5. **Pousser** → commit créé sous `votre-login <votre-login@users.noreply.github.com>`, suivi en direct, lien vers le dépôt.
+6. **Liens IA** : après le push, RepoDrop affiche une série de liens prêts à donner à un agent IA / humain :
+   - URL GitHub classique, branche, commit et **Codespaces** (`vscode.dev` + Copilot intégrés) ;
+   - URL **`vscode.dev`** (éditeur web officiel) ;
+   - URL de clone HTTPS (l'agent s'authentifie lui-même via sa session GitHub) ;
+   - commande **`gh repo clone`** prête à copier ;
+   - téléchargement du code en **`.zip`** (`GET /api/jobs/[id]/download`, node_modules exclus).
 
 ---
 
@@ -100,13 +126,14 @@ Limite de taille par défaut : **200 Mo** uploadés, **500 Mo** décompressés, 
 npm test
 ```
 
-48 tests couvrent :
+71 tests couvrent :
 
 - sanitisation (traversal Unix/Windows, absolus, NUL, profondeur) ;
 - extraction `.zip` réelle (fixtures construites avec `yazl` : nominal, bombes, symlinks, `.git`, limites) ;
 - extraction `.rar` réelle via le **worker enfant** (fixtures RAR4/RAR5, unicode, mot de passe, volumes, symlink traversal) ;
 - flux git complet (`init → fetch → overlay → commit → push`) contre un **dépôt bare local** ;
-- détection de format (magic bytes) et chiffrement de session.
+- détection de format (magic bytes) et chiffrement de session ;
+- reconstruction de l'URL publique derrière un proxy (hôte, schéma, `Secure`).
 
 CI : GitHub Actions (lint + typecheck + tests + build) sur chaque push/PR.
 

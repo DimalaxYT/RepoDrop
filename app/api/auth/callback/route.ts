@@ -2,11 +2,11 @@
  * GET /api/auth/callback — échange du code OAuth contre un jeton,
  * création de la session (cookie chiffré), redirection vers /import.
  */
-import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { config } from "@/lib/config";
 import { getViewer } from "@/lib/github";
 import { setSessionCookie } from "@/lib/session";
+import { isSecureRequest, redirectTo } from "@/lib/http";
 
 export const dynamic = "force-dynamic";
 
@@ -17,10 +17,10 @@ export async function GET(req: Request): Promise<Response> {
   const jar = await cookies();
   const expected = jar.get("rd_oauth")?.value;
 
-  // Redirections basées sur l'URL ENTRANTE (proxy de preview compatible) ;
-  // seul redirect_uri (envoyé à GitHub) doit correspondre à APP_URL.
-  const fail = (reason: string) =>
-    NextResponse.redirect(new URL(`/login?error=${reason}`, req.url));
+  // Redirections RELATIVES : le navigateur les résout sur l'origine courante
+  // (compatible proxy de preview) ; seul redirect_uri (envoyé à GitHub) doit
+  // correspondre à APP_URL.
+  const fail = (reason: string) => redirectTo(`/login?error=${reason}`);
 
   if (!code || !state || !expected || state !== expected) {
     return fail("state");
@@ -63,16 +63,19 @@ export async function GET(req: Request): Promise<Response> {
 
   try {
     const viewer = await getViewer(token);
-    await setSessionCookie({
-      login: viewer.login,
-      name: viewer.name || viewer.login,
-      avatar: viewer.avatar_url,
-      token,
-    });
+    await setSessionCookie(
+      {
+        login: viewer.login,
+        name: viewer.name || viewer.login,
+        avatar: viewer.avatar_url,
+        token,
+      },
+      isSecureRequest(req),
+    );
   } catch (e) {
     console.error("[oauth] /user en échec:", e);
     return fail("oauth");
   }
 
-  return NextResponse.redirect(new URL("/import", req.url));
+  return redirectTo("/import");
 }

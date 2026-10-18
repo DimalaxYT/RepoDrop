@@ -226,7 +226,13 @@ async function runPush(
       status: "done",
       error: null,
       push_opts: opts,
-      push_result: { url: result.url, branch, commitSha: result.sha, created },
+      push_result: {
+        url: result.url,
+        fullName: target.fullName,
+        branch,
+        commitSha: result.sha,
+        created,
+      },
     });
   } catch (err) {
     // Log serveur sans token (le token n'apparaît jamais dans les erreurs).

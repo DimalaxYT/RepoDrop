@@ -21,6 +21,7 @@ export type ErrorCode =
   | "NAME_INVALID"
   | "NO_CHANGES"
   | "CONFLICT"
+  | "SCOPE_MISSING"
   | "GIT_FAILED"
   | "INTERRUPTED"
   | "INTERNAL";
@@ -62,6 +63,8 @@ const FR: Record<ErrorCode, string> = {
   NO_CHANGES: "Rien à pousser : les fichiers correspondent déjà au dépôt destination.",
   CONFLICT:
     "Le dépôt destination a changé entre-temps. Réessayez (ou poussez sur une branche dédiée).",
+  SCOPE_MISSING:
+    "GitHub refuse la modification des fichiers de workflow (.github/workflows/…) : le jeton n'a pas le scope « workflow ». Déconnectez-vous puis reconnectez-vous pour l'accorder.",
   GIT_FAILED: "Le push vers GitHub a échoué.",
   INTERRUPTED: "Le traitement a été interrompu (redémarrage du serveur).",
   INTERNAL: "Erreur interne inattendue. Réessayez dans un instant.",

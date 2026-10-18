@@ -14,7 +14,7 @@
 | M4 — Durcissement | ✅ | anti zip-slip/bombes, rate-limit, purge auto, logs sans secrets |
 | M5 — UI & déploiement | ✅ | UI FR complète, Docker/compose, README, `.env.example` |
 
-**Tests :** 48/48 (sanitize, zip réel, rar réel via fixtures, git push sur bare local, session, magic bytes).
+**Tests :** 60/60 (sanitize, zip réel, rar réel via fixtures, git push sur bare local, session, magic bytes, URL publique derrière proxy).
 **E2E manuel :** upload zip « piègé » (.git/node_modules/.DS_Store/racine unique) → aperçu exact → push réel sur `DimalaxYT/adazdjadka-l` branche dédiée → vérifié (fichiers à la racine, auteur correct, `main` intact) → branche de test supprimée. Refus 415 (magic bytes) et 401 vérifiés.
 
 
