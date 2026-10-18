@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ thème */
+@theme {
+  --color-ink: #0a0d14; /* fond de page */
+  --color-panel: #10141f; /* cartes */
+  --color-panel2: #161b2a; /* panneaux imbriqués */
+  --color-edge: #232a3b; /* bordures */
+  --color-chalk: #e5eaf3; /* texte principal */
+  --color-mist: #93a0b4; /* texte atténué */
+  --color-go: #34d399; /* accent : push / vert */
+  --color-godim: #0e9f6e;
+  --color-sky: #38bdf8; /* accent secondaire */
+  --color-amber: #fbbf24; /* avertissements */
+  --color-danger: #f87171; /* erreurs */
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+
+  --animate-fade-up: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-fade-in: fade-in 0.4s ease-out both;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-indeterminate: indeterminate 1.4s ease-in-out infinite;
+
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(14px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes shimmer {
+    from {
+      background-position: -200% 0;
+    }
+    to {
+      background-position: 200% 0;
+    }
+  }
+  @keyframes indeterminate {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(320%);
+    }
+  }
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    scroll-behavior: smooth;
+  }
+  body {
+    background-color: var(--color-ink);
+    color: var(--color-chalk);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--color-go) 35%, transparent);
+  }
+  /* barres de défilement discrètes */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-edge) transparent;
+  }
+}
+
+@utility panel {
+  background-color: var(--color-panel);
+  border: 1px solid var(--color-edge);
+  border-radius: 1rem;
+}
+
+/* fond décoratif du hero : grille + halos */
+@utility hero-bg {
+  background-image:
+    radial-gradient(ellipse 60% 50% at 50% -10%, rgba(56, 189, 248, 0.14), transparent),
+    radial-gradient(ellipse 45% 40% at 80% 20%, rgba(52, 211, 153, 0.1), transparent),
+    linear-gradient(to bottom, transparent, var(--color-ink)),
+    linear-gradient(rgba(35, 42, 59, 0.5) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(35, 42, 59, 0.5) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    100% 100%,
+    100% 100%,
+    42px 42px,
+    42px 42px;
+}
+
+@utility text-gradient {
+  background: linear-gradient(100deg, var(--color-go), var(--color-sky));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
