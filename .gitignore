@@ -1,0 +1,26 @@
+# deps / build
+node_modules/
+.next/
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# tests / coverage
+coverage/
+
+# env (jamais de secrets en clair dans le repo)
+.env
+.env.*
+!.env.example
+
+# données locales (SQLite du worker)
+data/
+
+# tmp jobs
+tmp/
+
+# divers
+.DS_Store
+*.log
+npm-debug.log*

@@ -1,0 +1,22 @@
+services:
+  repodrop:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      # Persistez la base et les jobs hors du conteneur.
+      DB_PATH: /app/data/repodrop.db
+      JOBS_DIR: /tmp/repodrop-jobs
+    volumes:
+      - repodrop-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  repodrop-data:
