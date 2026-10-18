@@ -55,13 +55,20 @@ export async function getSession(): Promise<SessionData | null> {
   return openSession(raw);
 }
 
-/** Écriture du cookie (Route Handler OAuth). */
-export async function setSessionCookie(data: SessionData): Promise<void> {
+/**
+ * Écriture du cookie (Route Handler OAuth).
+ * `secure` devrait refléter le protocole réel de la requête (cf. isSecureRequest)
+ * : un cookie `Secure` posé sur une origine http:// est refusé par le navigateur.
+ */
+export async function setSessionCookie(
+  data: SessionData,
+  secure = config.appUrl.startsWith("https"),
+): Promise<void> {
   const jar = await cookies();
   jar.set(SESSION_COOKIE, await sealSession(data), {
     httpOnly: true,
     sameSite: "lax",
-    secure: config.appUrl.startsWith("https"),
+    secure,
     path: "/",
     maxAge: MAX_AGE,
   });

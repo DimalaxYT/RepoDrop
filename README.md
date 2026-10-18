@@ -62,6 +62,26 @@ cp .env.example .env   # remplir les valeurs
 docker compose up -d --build
 ```
 
+### 4. Derrière un proxy (preview, ingress, tunnel)
+
+L'app est prévue pour tourner derrière un proxy qui termine le TLS :
+
+- les **redirections** sont *relatives* (`Location: /import`) : le navigateur les
+  résout sur l'origine courante — jamais sur l'adresse interne du serveur
+  (`0.0.0.0`, qui n'est pas navigable) ;
+- le cookie de session est marqué `Secure` seulement si la requête arrive
+  vraiment en HTTPS (`x-forwarded-proto`, ou `APP_URL` si l'hôte correspond) ;
+- `APP_URL` doit pointer sur l'URL publique **et** correspondre à l'URL de
+  callback déclarée dans l'OAuth App GitHub.
+
+En développement, `next.config.ts` autorise les origines de preview via
+`allowedDevOrigins` (sinon Next bloque les ressources `/_next/*`).
+
+```bash
+# écouter sur toutes les interfaces (obligatoire derrière un proxy)
+npx next dev -H 0.0.0.0 -p 10000
+```
+
 ---
 
 ## Utilisation
@@ -100,13 +120,14 @@ Limite de taille par défaut : **200 Mo** uploadés, **500 Mo** décompressés, 
 npm test
 ```
 
-48 tests couvrent :
+60 tests couvrent :
 
 - sanitisation (traversal Unix/Windows, absolus, NUL, profondeur) ;
 - extraction `.zip` réelle (fixtures construites avec `yazl` : nominal, bombes, symlinks, `.git`, limites) ;
 - extraction `.rar` réelle via le **worker enfant** (fixtures RAR4/RAR5, unicode, mot de passe, volumes, symlink traversal) ;
 - flux git complet (`init → fetch → overlay → commit → push`) contre un **dépôt bare local** ;
-- détection de format (magic bytes) et chiffrement de session.
+- détection de format (magic bytes) et chiffrement de session ;
+- reconstruction de l'URL publique derrière un proxy (hôte, schéma, `Secure`).
 
 CI : GitHub Actions (lint + typecheck + tests + build) sur chaque push/PR.
 
