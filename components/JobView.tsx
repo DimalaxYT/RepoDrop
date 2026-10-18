@@ -62,7 +62,15 @@ export function JobView({ initialJob }: { initialJob: JobRecord }) {
         const res = await fetch(`/api/jobs/${id}`, { cache: "no-store" });
         if (!res.ok) return;
         const data = (await res.json()) as { job?: JobRecord };
-        if (!cancelled && data.job) setJob(data.job);
+        if (cancelled || !data.job) return;
+        const next = data.job;
+        // Arborescence parfois très lourde : on ne déclenche un re-render
+        // que si l'état a réellement changé (même objet ⇒ pas de rendu).
+        setJob((prev) =>
+          prev.status === next.status && prev.updatedAt === next.updatedAt
+            ? prev
+            : next,
+        );
       } catch {
         /* on retentera au prochain tick */
       }
@@ -312,11 +320,6 @@ function PreviewPanel({ job }: { job: JobRecord }) {
           {p.tree.map((e) => (
             <TreeLine key={e.path} entry={e} />
           ))}
-          {p.fileCount > p.tree.length && (
-            <p className="px-3 py-2 text-center text-[11px] text-mist/70">
-              … et {formatCount(p.fileCount - p.tree.length)} supplémentaires
-            </p>
-          )}
         </div>
       </CardContent>
     </Card>

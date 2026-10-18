@@ -1,12 +1,24 @@
 /**
  * Construit l'aperçu affiché à l'utilisateur à partir du résultat d'extraction.
+ *
+ * AUCUNE troncature : l'arborescence est complète (tous les fichiers, toutes
+ * les profondeurs, plus les dossiers ancêtres synthétisés), en ordre DFS
+ * (dossiers puis fichiers, alphabétiques) — l'utilisateur voit exactement
+ * tout ce qui sera poussé.
  */
 import { hasNodeModulesSegment } from "../sanitize.mjs";
 import type { ArchivePreview, PreviewEntry } from "../types";
 import type { ExtractResult } from "./types";
 
 const GH_MAX_FILE = 100 * 1024 * 1024; // limite GitHub par fichier
-const TREE_CAP = 400;
+
+/** Nœud de l'arborescence reconstruite. */
+interface TreeNode {
+  path: string; // dossier : "src/" · fichier : "src/app.ts"
+  size: number;
+  isDir: boolean;
+  children: Map<string, TreeNode>;
+}
 
 export function buildPreview(res: ExtractResult): ArchivePreview {
   const files = res.entries;
@@ -26,21 +38,52 @@ export function buildPreview(res: ExtractResult): ArchivePreview {
     }
   }
 
-  // --- Échantillon d'arborescence : profondeur <= 2, dossiers d'abord ---
-  const dirSet = new Set<string>();
-  const fileItems: PreviewEntry[] = [];
-  for (const f of files) {
-    const parts = f.path.split("/");
-    for (let i = 1; i < parts.length && i <= 2; i++) {
-      dirSet.add(parts.slice(0, i).join("/") + "/");
+  // --- Arborescence COMPLÈTE ---
+  const root: TreeNode = { path: "", size: 0, isDir: true, children: new Map() };
+
+  const ensureDir = (dirPath: string): TreeNode => {
+    let node = root;
+    let acc = "";
+    for (const seg of dirPath.split("/")) {
+      if (!seg) continue;
+      acc = acc ? `${acc}/${seg}` : seg;
+      let child = node.children.get(seg);
+      if (!child) {
+        child = { path: `${acc}/`, size: 0, isDir: true, children: new Map() };
+        node.children.set(seg, child);
+      }
+      if (!child.isDir) return child; // conflit (inatteignable : refusé en amont)
+      node = child;
     }
-    if (parts.length <= 2) fileItems.push({ path: f.path, size: f.size });
-    if (dirSet.size + fileItems.length > TREE_CAP * 2) break;
+    return node;
+  };
+
+  for (const f of files) {
+    const lastSlash = f.path.lastIndexOf("/");
+    const parent =
+      lastSlash === -1 ? root : ensureDir(f.path.slice(0, lastSlash));
+    if (parent.isDir && !parent.children.has(f.path.slice(lastSlash + 1))) {
+      parent.children.set(f.path.slice(lastSlash + 1), {
+        path: f.path,
+        size: f.size,
+        isDir: false,
+        children: new Map(),
+      });
+    }
   }
-  const dirs: PreviewEntry[] = [...dirSet].map((p) => ({ path: p, size: 0 }));
-  dirs.sort((a, b) => a.path.localeCompare(b.path, "fr"));
-  fileItems.sort((a, b) => a.path.localeCompare(b.path, "fr"));
-  const tree = [...dirs, ...fileItems].slice(0, TREE_CAP);
+
+  // Aplat pré-ordre : à chaque niveau, dossiers puis fichiers, alphabétiques.
+  const tree: PreviewEntry[] = [];
+  const walk = (node: TreeNode): void => {
+    const kids = [...node.children.values()];
+    const dirs = kids.filter((k) => k.isDir).sort(byName);
+    const filesOnly = kids.filter((k) => !k.isDir).sort(byName);
+    for (const child of [...dirs, ...filesOnly]) {
+      tree.push({ path: child.path, size: child.isDir ? 0 : child.size });
+      if (child.isDir) walk(child);
+    }
+  };
+  walk(root);
 
   // --- node_modules présent ? ---
   const hasNodeModules = files.some((f) => hasNodeModulesSegment(f.path));
@@ -61,4 +104,8 @@ export function buildPreview(res: ExtractResult): ArchivePreview {
     hasNodeModules,
     tooLargeForGitHub,
   };
+}
+
+function byName(a: TreeNode, b: TreeNode): number {
+  return a.path.localeCompare(b.path, "fr");
 }

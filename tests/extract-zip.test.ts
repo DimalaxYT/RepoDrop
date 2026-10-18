@@ -157,6 +157,33 @@ describe("extractZip — sécurité", () => {
     });
   });
 
+  it("l'aperçu est COMPLET — aucune limite de lignes ( > 400 fichiers, profondeur ∞ )", async () => {
+    // 450 fichiers profonds : l'ancien cap (400) aurait tronqué.
+    const many = Array.from({ length: 450 }, (_, i) => ({
+      path: `src/mod${i}/deep/file${i}.ts`,
+      content: `export const x${i} = ${i}\n`,
+    }));
+    const res = await extractOf(many);
+    expect(res.fileCount).toBe(450);
+
+    const preview = buildPreview(res);
+    const fileEntries = preview.tree.filter((t) => !t.path.endsWith("/"));
+    // Tous les fichiers sont présents, quelle que soit la profondeur.
+    expect(fileEntries.length).toBe(450);
+    expect(preview.tree.some((t) => t.path === "src/mod7/deep/file7.ts")).toBe(true);
+    // Dossiers ancêtres synthétisés (tous les niveaux).
+    expect(preview.tree.some((t) => t.path === "src/")).toBe(true);
+    expect(preview.tree.some((t) => t.path === "src/mod7/")).toBe(true);
+    expect(preview.tree.some((t) => t.path === "src/mod7/deep/")).toBe(true);
+    // Aucun doublon.
+    expect(new Set(preview.tree.map((t) => t.path)).size).toBe(preview.tree.length);
+    // Un dossier apparaît AVANT ses enfants (ordre DFS).
+    const idxSrc = preview.tree.findIndex((t) => t.path === "src/");
+    const idxFile = preview.tree.findIndex((t) => t.path === "src/mod0/deep/file0.ts");
+    expect(idxSrc).toBeGreaterThanOrEqual(0);
+    expect(idxSrc).toBeLessThan(idxFile);
+  });
+
   it("refuse le traversal profond avec plusieurs ..", async () => {
     // « deepfile_1 » (10) → « ../../evil » (10)
     const zip = await makeEvilZip("deepfile_1", "../../evil");

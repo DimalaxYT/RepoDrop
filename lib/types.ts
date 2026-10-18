@@ -31,7 +31,7 @@ export interface ArchivePreview {
     gitDirs: number; // dossiers .git embarqués
     outside: number; // tentatives de path traversal
   };
-  /** Échantillon de l'arborescence pour l'affichage (d'abord les dossiers) */
+  /** Arborescence COMPLÈTE (tous les fichiers, toutes profondeurs, dossiers ancêtres) */
   tree: PreviewEntry[];
   /** true si au moins un dossier node_modules présent (strippable) */
   hasNodeModules: boolean;
