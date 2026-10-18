@@ -1,7 +1,23 @@
 # Plan — Importeur d'archives de code vers GitHub
 
-> **Working title :** *RepoDrop* (nom à définir — voir §12)
+> **Working title :** *RepoDrop* (nom retenu ✅)
 > **Objectif :** un outil web où l'utilisateur se connecte avec GitHub, dépose une archive `.rar` / `.zip` de code, choisit la destination, et le contenu est poussé sur GitHub. Zéro ligne de commande, zéro clone, zéro « truc chiant ».
+
+## ✅ Statut — v1 LIVRÉE (2026-10-18)
+
+| Jalon | État | Notes |
+|---|---|---|
+| M0 — Base & CI | ✅ | Next.js 15 + TS + ESLint/Prettier, CI GitHub Actions |
+| M1 — Auth GitHub | ✅ | OAuth (scope `repo`) + mode dev (`DEV_AUTH=1`) |
+| M2 — Upload & extraction | ✅ | busboy streaming, yauzl v3, worker RAR isolé, limites |
+| M3 — Push GitHub | ✅ | dépôt neuf/existant, branche dédiée, jobs SQLite, statut live |
+| M4 — Durcissement | ✅ | anti zip-slip/bombes, rate-limit, purge auto, logs sans secrets |
+| M5 — UI & déploiement | ✅ | UI FR complète, Docker/compose, README, `.env.example` |
+
+**Tests :** 48/48 (sanitize, zip réel, rar réel via fixtures, git push sur bare local, session, magic bytes).
+**E2E manuel :** upload zip « piègé » (.git/node_modules/.DS_Store/racine unique) → aperçu exact → push réel sur `DimalaxYT/adazdjadka-l` branche dédiée → vérifié (fichiers à la racine, auteur correct, `main` intact) → branche de test supprimée. Refus 415 (magic bytes) et 401 vérifiés.
+
+
 
 ---
 

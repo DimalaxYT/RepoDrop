@@ -76,6 +76,10 @@ export async function POST(req: Request): Promise<Response> {
       return jsonError("L'archive est vide.", 400);
     }
 
+    // Nom final attendu par le worker : upload.<format>
+    const finalPath = path.join(jobPath, `upload.${format}`);
+    fs.renameSync(result.archivePath, finalPath);
+
     // Tout est bon : on persiste le job et on lance l'extraction en tâche de fond.
     insertJob({
       id,
