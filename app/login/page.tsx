@@ -60,9 +60,11 @@ export default async function LoginPage({
 
           <p className="flex items-start gap-2 text-xs leading-relaxed text-mist">
             <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-go" />
-            Nous demandons uniquement le scope <code className="text-chalk">repo</code> : créer
-            des dépôts et pousser du code <strong className="text-chalk">en votre nom</strong>.
-            Votre jeton est chiffré dans un cookie httpOnly, jamais stocké en base.
+            Nous demandons uniquement les scopes <code className="text-chalk">repo</code> et{" "}
+            <code className="text-chalk">workflow</code> : créer des dépôts et pousser du code{" "}
+            <strong className="text-chalk">en votre nom</strong> (y compris vos fichiers{" "}
+            <code className="text-chalk">.github/workflows/</code>). Votre jeton est chiffré
+            dans un cookie httpOnly, jamais stocké en base.
           </p>
 
           {config.devAuth && (

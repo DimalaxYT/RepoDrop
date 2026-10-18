@@ -13,17 +13,23 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  Clipboard,
+  Download,
+  ExternalLink,
   File,
   FileText,
   Folder,
   GitBranch,
   GitFork,
+  Link2,
   Lock,
   Rocket,
   Search,
   Unlock,
 } from "lucide-react";
 import type { JobRecord, PreviewEntry } from "@/lib/types";
+import type { RepoLinks } from "@/lib/links";
+import { buildRepoLinks } from "@/lib/links";
 import type { PushableRepo } from "@/lib/github";
 import { formatBytes, formatCount } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -186,55 +192,133 @@ function FailedState({ job }: { job: JobRecord }) {
   );
 }
 
+function LinkChip({ icon, label, href, sub }: { icon: React.ReactNode; label: string; href: string; sub?: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group flex items-start gap-2.5 rounded-lg border border-edge bg-panel px-3 py-2.5 text-sm hover:border-sky/50 hover:bg-panel2"
+    >
+      <span className="mt-0.5 shrink-0 text-mist group-hover:text-sky">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium text-chalk">{label}</span>
+        {sub && <span className="block text-xs text-mist">{sub}</span>}
+      </span>
+      <ExternalLink className="h-3.5 w-3.5 shrink-0 text-mist/50 group-hover:text-sky" />
+    </a>
+  );
+}
+
+function LinkGrid({ links }: { links: RepoLinks }) {
+  return (
+    <div className="grid gap-2">
+      <LinkChip icon={<Link2 className="h-4 w-4" />} label="Dépôt GitHub" href={links.repoUrl} sub={links.fullName} />
+      <LinkChip
+        icon={<GitBranch className="h-4 w-4" />}
+        label={`Branche « ${links.branchUrl.split("/tree/")[1]?.split("?")[0] ?? links.branchUrl} »`}
+        href={links.branchUrl}
+        sub="Poussez sur cette branche"
+      />
+      {links.commitUrl && (
+        <LinkChip icon={<FileText className="h-4 w-4" />} label="Commit précis" href={links.commitUrl} sub={`SHA : ${links.commitUrl?.split("/commit/")[1]?.slice(0, 7) ?? "?"}`} />
+      )}
+      <LinkChip
+        icon={<Rocket className="h-4 w-4" />}
+        label="Codespaces (agent IA GitHub)"
+        href={links.codespacesUrl}
+        sub="vscode.dev clé-en-main, Copilot connecté"
+      />
+      <LinkChip
+        icon={<ExternalLink className="h-4 w-4" />}
+        label="vscode.dev (éditeur web officiel)"
+        href={links.vscodeUrl}
+        sub="Copilot + édition + exécution (Codespaces)"
+      />
+      <LinkChip
+        icon={<GitFork className="h-4 w-4" />}
+        label="URL de clone (agent externe)"
+        href={links.cloneUrl}
+        sub="L'agent s'authentifie lui-même via sa session GitHub"
+      />
+      <LinkChip
+        icon={<Clipboard className="h-4 w-4" />}
+        label="Commande CLI `gh`"
+        href={`https://github.com/${links.fullName}`}
+        sub={links.cloneCommand}
+      />
+    </div>
+  );
+}
+
 function DoneState({ job }: { job: JobRecord }) {
   const push = job.push!;
+  const links = buildRepoLinks({
+    url: push.url,
+    fullName: push.fullName,
+    branch: push.branch,
+    commitSha: push.commitSha,
+  });
   const shortSha = push.commitSha?.slice(0, 7);
   return (
     <Card className="animate-fade-in border-go/40 relative overflow-hidden">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_60%_70%_at_50%_-20%,rgba(52,211,153,0.14),transparent)]" />
-      <CardContent className="relative flex flex-col items-center gap-5 py-14 text-center">
-        <span className="grid h-14 w-14 place-items-center rounded-2xl bg-go/15 text-go ring-1 ring-go/40">
-          <CheckCircle2 className="h-8 w-8" />
-        </span>
-        <div>
-          <h2 className="text-lg font-semibold">C'est poussé&nbsp;!</h2>
-          <p className="mx-auto mt-2 max-w-lg text-sm text-mist">
-            {formatCount(job.preview?.fileCount ?? 0)} importés sur la branche{" "}
-            <code className="rounded bg-panel2 px-1.5 py-0.5 text-xs text-chalk ring-1 ring-edge">
-              {push.branch}
-            </code>
-            {shortSha && (
-              <>
-                {" "}
-                · commit <code className="rounded bg-panel2 px-1.5 py-0.5 text-xs text-chalk ring-1 ring-edge">{shortSha}</code>
-              </>
-            )}
-            {push.created && " · dépôt créé"}.
-          </p>
+      <CardContent className="relative flex flex-col gap-5 py-10">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <span className="grid h-14 w-14 place-items-center rounded-2xl bg-go/15 text-go ring-1 ring-go/40">
+            <CheckCircle2 className="h-8 w-8" />
+          </span>
+          <div>
+            <h2 className="text-lg font-semibold">C'est poussé&nbsp;!</h2>
+            <p className="mx-auto mt-2 max-w-lg text-sm text-mist">
+              {formatCount(job.preview?.fileCount ?? 0)} importés sur la branche{" "}
+              <code className="rounded bg-panel2 px-1.5 py-0.5 text-xs text-chalk ring-1 ring-edge">
+                {links.branchUrl.replace(/^.*\/tree\//, "")}
+              </code>
+              {shortSha && (
+                <>
+                  {" "}
+                  · commit <code className="rounded bg-panel2 px-1.5 py-0.5 text-xs text-chalk ring-1 ring-edge">{shortSha}</code>
+                </>
+              )}
+              {push.created && " · dépôt créé"}.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <a href={links.repoUrl} target="_blank" rel="noopener noreferrer" className={buttonVariants({ size: "lg" })}>
+              <GitFork className="h-4 w-4" />
+              Ouvrir sur GitHub
+              <ArrowRight className="h-4 w-4" />
+            </a>
+            <Button type="button" variant="outline" size="lg" onClick={() => void navigator.clipboard.writeText(links.repoUrl)}>
+              <Clipboard className="h-4 w-4" />
+              Copier le lien
+            </Button>
+            <Button type="button" variant="outline" size="lg" onClick={() => (window.location.href = `/api/jobs/${job.id}/download`)}>
+              <Download className="h-4 w-4" />
+              Télécharger en .zip
+            </Button>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center justify-center gap-3">
+        <div className="border-t border-edge pt-5">
+          <p className="mb-3 text-xs font-medium uppercase tracking-wider text-mist">
+            Liens prêts à donner à une IA :
+          </p>
+          <LinkGrid links={links} />
+        </div>
+        <div className="flex items-center justify-between gap-3 border-t border-edge pt-4">
           <a
-            href={push.url}
+            href={links.repoUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className={buttonVariants({ size: "lg" })}
+            className="truncate font-mono text-xs text-mist underline decoration-edge underline-offset-4 hover:text-chalk"
           >
-            <GitFork className="h-4 w-4" />
-            Ouvrir sur GitHub
-            <ArrowRight className="h-4 w-4" />
+            {links.repoUrl.replace("https://", "")}
           </a>
-          <Link href="/import" className={buttonVariants({ variant: "outline" })}>
+          <Link href="/import" className="text-xs text-mist underline decoration-edge underline-offset-4 hover:text-chalk">
             Importer une autre archive
           </Link>
         </div>
-        <a
-          href={push.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="font-mono text-xs text-mist underline decoration-edge underline-offset-4 hover:text-chalk"
-        >
-          {push.url.replace("https://", "")}
-        </a>
       </CardContent>
     </Card>
   );

@@ -71,6 +71,8 @@ export interface JobRecord {
   preview: ArchivePreview | null;
   push: {
     url: string; // URL du dépôt
+    /** "owner/repo" (dérivé de `url` si absent : anciens jobs) */
+    fullName?: string;
     branch: string;
     commitSha?: string;
     created?: boolean; // dépôt créé par nous

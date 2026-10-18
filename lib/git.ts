@@ -73,7 +73,15 @@ async function git(args: string[], opts: GitOpts): Promise<string> {
         }
         const detail = cleanOutput(String(stderr || stdout));
         // Jamais de token dans ces messages : l'auth passe par l'env.
-        if (/non-fast-forward|\[rejected\]|failed to push/i.test(detail)) {
+        if (
+          /without [`'"]?workflow[`'"]? scope|refusing to allow an OAuth App to create or update workflow/i.test(
+            detail,
+          )
+        ) {
+          // GitHub refuse d'écrire un fichier de workflow sans le scope
+          // « workflow » : ce n'est PAS un conflit, c'est un scope manquant.
+          reject(new AppError("SCOPE_MISSING"));
+        } else if (/non-fast-forward|\[rejected\]|failed to push/i.test(detail)) {
           reject(new AppError("CONFLICT", undefined, detail));
         } else if (/Repository not found/i.test(detail)) {
           reject(new AppError("FORBIDDEN", undefined, detail));

@@ -29,7 +29,11 @@ export async function GET(req: Request): Promise<Response> {
   const params = new URLSearchParams({
     client_id: config.github.clientId,
     redirect_uri: `${config.appUrl.replace(/\/$/, "")}/api/auth/callback`,
-    scope: "repo",
+    // « repo » : lecture/écriture des dépôts.
+    // « workflow » : obligatoire pour écrire un fichier .github/workflows/*
+    //   (sans lui, GitHub rejette le push : « refusing to allow an OAuth App
+    //   to create or update workflow … without 'workflow' scope »).
+    scope: "repo workflow",
     state,
     allow_signup: "true",
   });
