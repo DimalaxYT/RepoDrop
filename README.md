@@ -128,15 +128,36 @@ décision. Les dossiers `.tar` sont donc acceptés au même titre que les archiv
 Aucun bouton visible n'y mène : c'est un outil staff. Trois portes discrètes,
 toutes équivalentes :
 
-1. **le logo RepoDrop** dans l'en-tête (le carré vert, à gauche du nom) ;
+1. **le logo RepoDrop du pied de page** (le carré vert, à gauche du nom) ;
 2. le **point quasi invisible** en bas à droite du pied de page (5 clics) ;
 3. la séquence **Konami** `↑ ↑ ↓ ↓ ← → ← → B A`.
 
-La porte n'est qu'un raccourci — **l'accès réel est vérifié côté serveur**
-(`STAFF_LOGINS`) : un compte hors allowlist tombe sur un écran
-« accès restreint », et chaque API staff répond 401/403.
+### Deux verrous cumulatifs
 
-Trois onglets :
+La porte n'est qu'un raccourci : **tout se décide côté serveur**, dans
+`checkStaff()`, par où passent la page *et* toutes les API `/api/staff/*`.
+
+| Verrou | Réglage | Effet s'il manque |
+|---|---|---|
+| 1. Allowlist | `STAFF_LOGINS=login1,login2` | écran « accès restreint », API en 403 |
+| 2. Mot de passe | onglet **Sécurité** du panel, ou `STAFF_PASSWORD` | écran de saisie, API en 403 `locked` |
+
+Le mot de passe est **haché en scrypt** (sel aléatoire, `N=16384`) avant
+d'être écrit en base : il n'est jamais renvoyé par l'API, jamais journalisé, et
+personne ne peut le relire — pas même depuis le panel. Sa validation est portée
+par le **cookie de session chiffré** (`staffUnlocked`), donc :
+
+- elle ne vaut que pour la session en cours (7 jours max), jamais partagée ;
+- la déconnexion, ou le bouton « Verrouiller maintenant », la supprime ;
+- changer le mot de passe ne vous éjecte pas de votre propre session.
+
+Après **6 échecs**, l'IP est suspendue 15 minutes (`429`), même avec le bon mot
+de passe. Une simple faute de frappe ne bloque rien : le seuil n'est atteint
+qu'au sixième échec consécutif.
+
+Sans mot de passe défini, l'allowlist suffit (comportement d'origine).
+
+Quatre onglets :
 
 ### 1. Activité
 
@@ -225,7 +246,7 @@ Limite de taille par défaut : **200 Mo** uploadés, **500 Mo** décompressés, 
 npm test
 ```
 
-145 tests couvrent :
+158 tests couvrent :
 
 - sanitisation (traversal Unix/Windows, absolus, NUL, profondeur) ;
 - extraction `.zip` réelle (fixtures `yazl` : nominal, bombes, symlinks, `.git`, limites) ;

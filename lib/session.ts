@@ -15,6 +15,11 @@ export interface SessionData {
   name: string;
   avatar: string;
   token: string;
+  /**
+   * Mot de passe du panel staff validé pour cette session. Porté par le cookie
+   * chiffré : il disparaît donc à la déconnexion et ne touche jamais la base.
+   */
+  staffUnlocked?: boolean;
 }
 
 function key(): Uint8Array {
@@ -41,6 +46,7 @@ export async function openSession(sealed: string): Promise<SessionData | null> {
       name: data.name ?? data.login,
       avatar: data.avatar ?? "",
       token: data.token,
+      staffUnlocked: data.staffUnlocked === true,
     };
   } catch {
     return null;

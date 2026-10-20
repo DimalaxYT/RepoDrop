@@ -220,3 +220,21 @@ Ce qui a été livré en plus du périmètre initial :
 
 Tests : **145** (contre 71 en v1) — extraction tar réelle + hostile, détection de
 format, Discord (messages, Gateway, moniteur), réglages chiffrés, accès staff.
+
+### Verrou par mot de passe du panel staff
+
+| Ajout | Rôle |
+|---|---|
+| `hashStaffPassword` / `verifyStaffPasswordHash` (`lib/staff.ts`) | empreinte scrypt salée auto-descriptive (`scrypt$N,r,p$salt$hash`), comparaison en temps constant, aucune exception sur empreinte malformée |
+| `isStaffPasswordSet` / `verifyStaffPassword` / `setStaffPassword` | amorçage par `STAFF_PASSWORD`, priorité à la base, suppression par chaîne vide |
+| `staffAccess()` | distingue `denied` / `locked` / `granted` pour choisir l'écran |
+| `checkStaff()` | **point de contrôle unique** : allowlist puis mot de passe, pour la page et toutes les API |
+| `staffUnlocked` dans `SessionData` | déverrouillage porté par le cookie chiffré, perdu à la déconnexion |
+| `POST/GET /api/staff/unlock` | déverrouille, verrouille (`action:"lock"`), limite à 6 essais / 15 min par IP |
+| `POST/GET /api/staff/security` | définit, change (mot de passe actuel exigé) ou supprime le verrou |
+| `StaffGate` | écran de saisie affiché à un compte staff non déverrouillé |
+| `StaffPassword` + onglet **Sécurité** | état du verrou, changement, suppression, « Verrouiller maintenant » |
+| porte du pied de page | le logo du footer mène à `/staff` ; celui de l'en-tête est redevenu un lien d'accueil |
+
+158 tests couvrent l'ensemble (dont 12 sur le mot de passe : empreintes,
+amorçage, priorité base/environnement, seuil de blocage par IP).

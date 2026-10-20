@@ -7,10 +7,11 @@
  */
 import { useState } from "react";
 import Link from "next/link";
-import { Activity, ArrowLeft, Bot, Gauge, ShieldCheck } from "lucide-react";
+import { Activity, ArrowLeft, Bot, Gauge, KeyRound, ShieldCheck } from "lucide-react";
 import { ActivityFeed } from "./ActivityFeed";
 import { DiscordSettings } from "./DiscordSettings";
 import { HealthPanel, type ConfigView } from "./HealthPanel";
+import { StaffPassword, type StaffSecurityView } from "./StaffPassword";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { ActivityResponse, StaffSettingsResponse, PingRow, UptimeStats } from "@/lib/staff-types";
@@ -18,6 +19,7 @@ import type { ActivityResponse, StaffSettingsResponse, PingRow, UptimeStats } fr
 const TABS = [
   { id: "activity", label: "Activité", icon: Activity },
   { id: "discord", label: "Discord", icon: Bot },
+  { id: "security", label: "Sécurité", icon: KeyRound },
   { id: "system", label: "Système", icon: Gauge },
 ] as const;
 
@@ -29,6 +31,7 @@ export function StaffPanel({
   pings,
   uptime,
   configView,
+  security,
   login,
 }: {
   activity: ActivityResponse;
@@ -36,6 +39,7 @@ export function StaffPanel({
   pings: PingRow[];
   uptime: UptimeStats;
   configView: ConfigView;
+  security: StaffSecurityView;
   login: string;
 }) {
   const [tab, setTab] = useState<TabId>("activity");
@@ -94,6 +98,7 @@ export function StaffPanel({
       <div className="animate-fade-in" key={tab}>
         {tab === "activity" && <ActivityFeed initial={activity} />}
         {tab === "discord" && <DiscordSettings initial={settings} />}
+        {tab === "security" && <StaffPassword initial={security} />}
         {tab === "system" && (
           <HealthPanel pings={pings} uptime={uptime} configView={configView} />
         )}

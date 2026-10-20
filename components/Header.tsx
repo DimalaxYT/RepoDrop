@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { getSession } from "@/lib/session";
-import { GitHubIcon, LogoMark } from "@/components/Brand";
+import { GitHubIcon, Wordmark } from "@/components/Brand";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -17,25 +17,12 @@ export async function Header() {
         className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-go/45 to-transparent"
       />
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
-        {/*
-          Marque en deux zones :
-            - le LOGO mène au panel staff (porte discrète, sans libellé) ;
-            - le NOM « RepoDrop » ramène à l'accueil.
-          L'accès à /staff reste vérifié côté serveur (STAFF_LOGINS).
-        */}
-        <span className="flex items-center gap-2 font-semibold tracking-tight text-chalk">
-          <Link
-            href="/staff"
-            aria-label="Espace réservé"
-            title=""
-            className="grid h-8 w-8 place-items-center rounded-lg bg-go/15 text-go ring-1 ring-go/30 transition-colors hover:bg-go/25 hover:ring-go/50"
-          >
-            <LogoMark className="h-5 w-5" />
-          </Link>
-          <Link href="/" className="transition-opacity hover:opacity-80">
-            RepoDrop
-          </Link>
-        </span>
+        <Link
+          href="/"
+          className="group flex items-center text-chalk transition-opacity hover:opacity-90"
+        >
+          <Wordmark />
+        </Link>
 
         <nav className="flex items-center gap-1.5 sm:gap-2">
           <Link

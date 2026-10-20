@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Archive, FileArchive, FolderArchive, ShieldCheck } from "lucide-react";
-import { Wordmark } from "@/components/Brand";
+import { LogoMark } from "@/components/Brand";
 import { SecretDoor } from "@/components/SecretDoor";
 
 /**
@@ -14,7 +14,25 @@ export function Footer() {
       <div className="relative mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
           <div className="sm:col-span-2 lg:col-span-1">
-            <Wordmark />
+            {/*
+              Marque en deux zones : le LOGO ouvre le panel staff (porte
+              discrète, sans libellé visible), le NOM ramène à l'accueil.
+              L'accès reste vérifié côté serveur : allowlist STAFF_LOGINS puis
+              mot de passe du panel.
+            */}
+            <span className="flex items-center gap-2 font-semibold tracking-tight">
+              <Link
+                href="/staff"
+                aria-label="Espace réservé"
+                title=""
+                className="grid h-8 w-8 place-items-center rounded-lg bg-go/15 text-go ring-1 ring-go/30 transition-colors hover:bg-go/25 hover:ring-go/50"
+              >
+                <LogoMark className="h-5 w-5" />
+              </Link>
+              <Link href="/" className="transition-opacity hover:opacity-80">
+                RepoDrop
+              </Link>
+            </span>
             <p className="mt-3 max-w-xs text-sm leading-relaxed text-mist">
               Vos archives de code, sur GitHub, en un glisser-déposer. Sans
               terminal, sans clone, sans configuration git.

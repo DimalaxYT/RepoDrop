@@ -30,6 +30,11 @@ export const config = {
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean),
   /**
+   * Mot de passe du panel staff, amorçable par variable d'environnement.
+   * Le panel peut en définir un lui-même : la valeur en base a priorité.
+   */
+  staffPassword: process.env.STAFF_PASSWORD ?? "",
+  /**
    * Amorçage du bot Discord par variables d'environnement (Docker).
    * Le panel staff a TOUJOURS priorité : ce qui est en base gagne.
    */

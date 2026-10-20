@@ -2,7 +2,12 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ShieldAlert, ShieldOff } from "lucide-react";
 import { getSession } from "@/lib/session";
-import { isStaffLogin, staffConfigured } from "@/lib/staff";
+import {
+  staffAccess,
+  staffConfigured,
+  staffPasswordUpdatedAt,
+} from "@/lib/staff";
+import { getString } from "@/lib/settings";
 import { ensureWorkerInit } from "@/lib/jobs";
 import {
   activityStats,
@@ -16,6 +21,7 @@ import { discordSettingsView, getDiscordSettings } from "@/lib/settings";
 import { getMonitorStatus } from "@/lib/discord/monitor";
 import { config } from "@/lib/config";
 import { StaffPanel } from "@/components/staff/StaffPanel";
+import { StaffGate } from "@/components/staff/StaffGate";
 import { buttonVariants } from "@/components/ui/button";
 import type { ActivityResponse } from "@/lib/staff-types";
 import type { ConfigView } from "@/components/staff/HealthPanel";
@@ -33,10 +39,15 @@ export default async function StaffPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  // Accès refusé : on reste discret (pas d'indexation, pas d'indice), mais on
-  // explique quoi régler si la liste STAFF_LOGINS est vide.
-  if (!isStaffLogin(session.login)) {
+  // Trois états : « denied » (pas staff), « locked » (staff, mot de passe à
+  // saisir), « granted ». On reste discret (pas d'indexation, pas d'indice),
+  // mais on explique quoi régler si la liste STAFF_LOGINS est vide.
+  const access = await staffAccess();
+  if (access === "denied") {
     return <NoAccess login={session.login} configured={staffConfigured()} />;
+  }
+  if (access === "locked") {
+    return <StaffGate login={session.login} />;
   }
 
   const pings = listPings(60);
@@ -76,6 +87,17 @@ export default async function StaffPage() {
       pings={pings}
       uptime={activity.uptime}
       configView={configView}
+      security={{
+        passwordSet:
+          Boolean(getString("staff.passwordHash")) ||
+          Boolean(config.staffPassword),
+        source: getString("staff.passwordHash")
+          ? "panel"
+          : config.staffPassword
+            ? "env"
+            : "none",
+        updatedAt: await staffPasswordUpdatedAt(),
+      }}
       login={session.login}
     />
   );
