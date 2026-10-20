@@ -43,9 +43,9 @@ export function SecretDoor() {
 
   const open = useCallback(() => {
     setUnlocked(true);
-    // Petit temps pour l'animation, puis navigation.
-    const t = setTimeout(() => router.push("/staff"), 650);
-    return () => clearTimeout(t);
+    // Navigation immédiate : aucun délai imposé (le voile se dessine pendant
+    // que la page arrive).
+    router.push("/staff");
   }, [router]);
 
   // ---------------------------------------------------------- séquence Konami

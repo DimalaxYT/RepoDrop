@@ -1,17 +1,13 @@
 import Link from "next/link";
-import { ArrowUpRight, LayoutDashboard } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { getSession } from "@/lib/session";
-import { isStaffLogin } from "@/lib/staff";
-import { Wordmark, GitHubIcon } from "@/components/Brand";
+import { GitHubIcon, LogoMark } from "@/components/Brand";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /** En-tête global (server component) — reflète l'état de session. */
 export async function Header() {
   const session = await getSession();
-  // Le bouton est visible pour tout le monde ; l'accès réel à /staff reste
-  // vérifié côté serveur (STAFF_LOGINS).
-  const staff = isStaffLogin(session?.login);
 
   return (
     <header className="sticky top-0 z-40 border-b border-edge/70 glass">
@@ -21,12 +17,25 @@ export async function Header() {
         className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-go/45 to-transparent"
       />
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
-        <Link
-          href="/"
-          className="group flex items-center text-chalk transition-opacity hover:opacity-90"
-        >
-          <Wordmark />
-        </Link>
+        {/*
+          Marque en deux zones :
+            - le LOGO mène au panel staff (porte discrète, sans libellé) ;
+            - le NOM « RepoDrop » ramène à l'accueil.
+          L'accès à /staff reste vérifié côté serveur (STAFF_LOGINS).
+        */}
+        <span className="flex items-center gap-2 font-semibold tracking-tight text-chalk">
+          <Link
+            href="/staff"
+            aria-label="Espace réservé"
+            title=""
+            className="grid h-8 w-8 place-items-center rounded-lg bg-go/15 text-go ring-1 ring-go/30 transition-colors hover:bg-go/25 hover:ring-go/50"
+          >
+            <LogoMark className="h-5 w-5" />
+          </Link>
+          <Link href="/" className="transition-opacity hover:opacity-80">
+            RepoDrop
+          </Link>
+        </span>
 
         <nav className="flex items-center gap-1.5 sm:gap-2">
           <Link
@@ -36,24 +45,6 @@ export async function Header() {
             Comment ça marche
           </Link>
 
-          {/* Accès direct au panel staff, sur toutes les pages. */}
-          <Link
-            href="/staff"
-            className={cn(
-              buttonVariants({
-                variant: staff ? "secondary" : "outline",
-                size: "sm",
-              }),
-            )}
-          >
-            <LayoutDashboard className="h-3.5 w-3.5" />
-            Dashboard
-            {staff && (
-              <span className="ml-0.5 rounded-full bg-grape/20 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider text-grape ring-1 ring-grape/30">
-                staff
-              </span>
-            )}
-          </Link>
 
           {session ? (
             <>

@@ -19,12 +19,25 @@ export function LogoMark({ className = "h-7 w-7" }: { className?: string }) {
   );
 }
 
+/** Le carré qui encadre le logo (sans lien : le caller décide où il mène). */
+export function LogoTile({ className = "h-8 w-8" }: { className?: string }) {
+  return (
+    <span
+      className={`grid ${className} place-items-center rounded-lg bg-go/15 text-go ring-1 ring-go/30`}
+    >
+      <LogoMark className="h-5 w-5" />
+    </span>
+  );
+}
+
+/**
+ * Marque complète, SANS lien : les pages décident de la cible de chaque partie
+ * (l'en-tête fait du logo une porte discrète vers le panel staff).
+ */
 export function Wordmark({ className = "" }: { className?: string }) {
   return (
     <span className={`flex items-center gap-2 font-semibold tracking-tight ${className}`}>
-      <span className="grid h-8 w-8 place-items-center rounded-lg bg-go/15 text-go ring-1 ring-go/30">
-        <LogoMark className="h-5 w-5" />
-      </span>
+      <LogoTile />
       RepoDrop
     </span>
   );

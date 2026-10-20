@@ -125,10 +125,16 @@ décision. Les dossiers `.tar` sont donc acceptés au même titre que les archiv
 
 ## Panel staff (`/staff`)
 
-Un **bouton caché** mène au panel : le point quasi invisible en bas à droite du
-pied de page (5 clics), ou la séquence Konami `↑ ↑ ↓ ↓ ← → ← → B A`. La porte
-n'est qu'un raccourci — **l'accès réel est vérifié côté serveur**
-(`STAFF_LOGINS`).
+Aucun bouton visible n'y mène : c'est un outil staff. Trois portes discrètes,
+toutes équivalentes :
+
+1. **le logo RepoDrop** dans l'en-tête (le carré vert, à gauche du nom) ;
+2. le **point quasi invisible** en bas à droite du pied de page (5 clics) ;
+3. la séquence **Konami** `↑ ↑ ↓ ↓ ← → ← → B A`.
+
+La porte n'est qu'un raccourci — **l'accès réel est vérifié côté serveur**
+(`STAFF_LOGINS`) : un compte hors allowlist tombe sur un écran
+« accès restreint », et chaque API staff répond 401/403.
 
 Trois onglets :
 
