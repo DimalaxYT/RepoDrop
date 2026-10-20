@@ -273,3 +273,27 @@ traduction des erreurs, base d'API configurable).
 196 tests couvrent l'ensemble, dont 8 sur l'archive (nom de fichier, endpoint
 par format, streaming octet pour octet, plafond de taille, dépôt vide, quota,
 validation avant appel).
+
+### Fiabilisation : tests manquants, compteurs persistés, API de test versionnée
+
+Trois faiblesses structurelles corrigées (aucun changement d'interface).
+
+| Sujet | Avant | Après |
+| --- | --- | --- |
+| `lib/ratelimit.ts` | fenêtre glissante sur une `Map` en mémoire | horodatages stockés dans la table `buckets` (SQLite), durée de vie = fenêtre |
+| verrou du panel staff | compteur d'essais en mémoire | même table `buckets`, clé `staff:unlock:<ip>` |
+| redémarrage du serveur | **remettait les 6 essais à zéro** | le verrou survit (vérifié : 429 après redémarrage, compteur continu) |
+| plusieurs processus | chaque instance avait ses compteurs | état partagé via la base |
+| `lib/jobs.ts` | aucun test | `sanitizeBranch` / `sanitizeRepoName` / `jobOwnedBy` testés |
+| `lib/ratelimit.ts` | aucun test | 13 tests (fenêtre, expiration, délai, persistance, `clientIp`) |
+| fausse API GitHub | script hors dépôt, non reproductible | `tests/mock-github.mjs` versionné, exécuté par la CI |
+| `sanitizeBranch` | `a//b` accepté (refname invalide pour git) | aligné sur `git check-ref-format` : `//`, `@{`, point final refusés |
+
+Vérification de bout en bout (serveur de production + fausse API) : 6 mots de
+passe erronés → `429` ; **après redémarrage du serveur, la même IP reçoit
+toujours `429`** (échéance poursuivie, 870 s restantes sur 900), une autre IP
+n'est pas affectée, et les deux lignes `staff:unlock:*` sont présentes en base.
+
+252 tests couvrent l'ensemble, dont 56 nouveaux : 13 sur le rate-limit persisté,
+15 sur les garde-fous de la couche jobs, 28 en intégration HTTP réelle contre la
+fausse API GitHub.

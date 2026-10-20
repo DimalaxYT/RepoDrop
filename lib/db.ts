@@ -77,6 +77,16 @@ function open(): DatabaseSync {
       created_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_pings_created ON pings(created_at DESC);
+
+    -- Compteurs et verrous à durée de vie limitée (rate-limit, tentatives de
+    -- déverrouillage du panel). Persistés : un redémarrage ne les remet plus
+    -- à zéro, et plusieurs processus partagent le même état.
+    CREATE TABLE IF NOT EXISTS buckets (
+      key        TEXT PRIMARY KEY,
+      payload    TEXT NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_buckets_expires ON buckets(expires_at);
   `);
   return db;
 }
@@ -558,4 +568,48 @@ export function prunePings(maxAgeMs = 7 * 24 * 3_600_000): void {
   } catch (err) {
     console.error("[db] prunePings:", err);
   }
+}
+
+/* ------------------------------------------------------------------ *
+ * Compartiments à durée de vie limitée (rate-limit, verrous)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Lit un compartiment, ou `null` s'il est absent **ou expiré**.
+ * Les lignes échues sont supprimées au passage (nettoyage opportuniste).
+ */
+export function bucketGet(key: string): string | null {
+  const now = Date.now();
+  const row = getDb()
+    .prepare("SELECT payload, expires_at FROM buckets WHERE key = ?")
+    .get(key) as { payload: string; expires_at: number } | undefined;
+  if (!row) return null;
+  if (row.expires_at <= now) {
+    bucketDelete(key);
+    return null;
+  }
+  return row.payload;
+}
+
+/** Écrit (ou remplace) un compartiment avec une durée de vie en millisecondes. */
+export function bucketSet(key: string, payload: string, ttlMs: number): void {
+  getDb()
+    .prepare(
+      `INSERT INTO buckets (key, payload, expires_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET payload = excluded.payload,
+                                      expires_at = excluded.expires_at`,
+    )
+    .run(key, payload, Date.now() + Math.max(1, ttlMs));
+}
+
+export function bucketDelete(key: string): void {
+  getDb().prepare("DELETE FROM buckets WHERE key = ?").run(key);
+}
+
+/** Supprime tous les compartiments échus. Renvoie le nombre de lignes ôtées. */
+export function bucketPrune(): number {
+  const res = getDb()
+    .prepare("DELETE FROM buckets WHERE expires_at <= ?")
+    .run(Date.now());
+  return Number(res.changes ?? 0);
 }

@@ -13,7 +13,7 @@ import crypto from "node:crypto";
 import { config } from "./config";
 import { getSession, type SessionData } from "./session";
 import { getString, setString } from "./settings";
-import { logEvent } from "./db";
+import { bucketDelete, bucketGet, bucketSet, logEvent } from "./db";
 
 /** La liste `STAFF_LOGINS` est-elle renseignée ? */
 export function staffConfigured(): boolean {
@@ -195,24 +195,53 @@ export async function staffPasswordUpdatedAt(): Promise<string | null> {
 
 /* --- Limitation des tentatives de déverrouillage (anti brute force) --- */
 
+/**
+ * Compteur **persisté** (table `buckets`) : un redémarrage du serveur ne rend
+ * plus ses essais à un attaquant, et plusieurs processus partagent l'état.
+ *
+ * Sémantique inchangée : les échecs ne bloquent qu'à partir du seuil, une
+ * simple faute de frappe ne ferme pas le panel.
+ */
 const MAX_ATTEMPTS = 6;
 const WINDOW_MS = 15 * 60 * 1000;
 
 type AttemptEntry = { count: number; windowStart: number; blockedUntil: number };
-const attempts = new Map<string, AttemptEntry>();
+
+const attemptKey = (ip: string) => `staff:unlock:${ip}`;
+
+function readAttempts(ip: string): AttemptEntry | null {
+  const raw = bucketGet(attemptKey(ip));
+  if (!raw) return null;
+  try {
+    const p = JSON.parse(raw) as AttemptEntry;
+    if (
+      typeof p.count !== "number" ||
+      typeof p.windowStart !== "number" ||
+      typeof p.blockedUntil !== "number"
+    ) {
+      return null;
+    }
+    return p;
+  } catch {
+    return null;
+  }
+}
+
+function writeAttempts(ip: string, entry: AttemptEntry, ttlMs: number): void {
+  bucketSet(attemptKey(ip), JSON.stringify(entry), ttlMs);
+}
 
 /**
  * Timestamp jusqu'auquel cette IP est bloquée (0 = libre).
- * Les échecs ne bloquent qu'à partir du seuil : une simple faute de frappe ne
- * doit pas fermer le panel.
+ * Les échecs ne bloquent qu'à partir du seuil.
  */
 export function unlockThrottledUntil(ip: string): number {
-  const entry = attempts.get(ip);
+  const entry = readAttempts(ip);
   if (!entry) return 0;
   const now = Date.now();
   if (entry.blockedUntil > now) return entry.blockedUntil;
   // Fenêtre de comptage écoulée : on repart de zéro.
-  if (now - entry.windowStart > WINDOW_MS) attempts.delete(ip);
+  if (now - entry.windowStart > WINDOW_MS) bucketDelete(attemptKey(ip));
   return 0;
 }
 
@@ -222,19 +251,22 @@ export function unlockThrottledUntil(ip: string): number {
  */
 export function recordUnlockFailure(ip: string): number {
   const now = Date.now();
-  let entry = attempts.get(ip);
+  let entry = readAttempts(ip);
   if (!entry || now - entry.windowStart > WINDOW_MS || entry.blockedUntil > now) {
     entry = { count: 0, windowStart: now, blockedUntil: 0 };
-    attempts.set(ip, entry);
   }
   entry.count += 1;
+
   if (entry.count >= MAX_ATTEMPTS) {
     entry.blockedUntil = now + WINDOW_MS;
+    writeAttempts(ip, entry, entry.blockedUntil - now);
     return 0;
   }
+
+  writeAttempts(ip, entry, Math.max(1, entry.windowStart + WINDOW_MS - now));
   return MAX_ATTEMPTS - entry.count;
 }
 
 export function resetUnlockAttempts(ip: string): void {
-  attempts.delete(ip);
+  bucketDelete(attemptKey(ip));
 }
