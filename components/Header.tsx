@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, LayoutDashboard } from "lucide-react";
 import { getSession } from "@/lib/session";
+import { isStaffLogin } from "@/lib/staff";
 import { Wordmark, GitHubIcon } from "@/components/Brand";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -8,6 +9,9 @@ import { cn } from "@/lib/utils";
 /** En-tête global (server component) — reflète l'état de session. */
 export async function Header() {
   const session = await getSession();
+  // Le bouton est visible pour tout le monde ; l'accès réel à /staff reste
+  // vérifié côté serveur (STAFF_LOGINS).
+  const staff = isStaffLogin(session?.login);
 
   return (
     <header className="sticky top-0 z-40 border-b border-edge/70 glass">
@@ -30,6 +34,25 @@ export async function Header() {
             className="hidden rounded-lg px-3 py-2 text-sm text-mist transition-colors hover:bg-panel2 hover:text-chalk md:inline-block"
           >
             Comment ça marche
+          </Link>
+
+          {/* Accès direct au panel staff, sur toutes les pages. */}
+          <Link
+            href="/staff"
+            className={cn(
+              buttonVariants({
+                variant: staff ? "secondary" : "outline",
+                size: "sm",
+              }),
+            )}
+          >
+            <LayoutDashboard className="h-3.5 w-3.5" />
+            Dashboard
+            {staff && (
+              <span className="ml-0.5 rounded-full bg-grape/20 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider text-grape ring-1 ring-grape/30">
+                staff
+              </span>
+            )}
           </Link>
 
           {session ? (

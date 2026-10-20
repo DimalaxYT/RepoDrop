@@ -9,6 +9,7 @@ import {
   FolderArchive,
   Gauge,
   GitBranch,
+  LayoutDashboard,
   Lock,
   MousePointerClick,
   ShieldCheck,
@@ -154,12 +155,12 @@ export default async function Home() {
                 href="/staff"
                 className={cn(
                   buttonVariants({
-                    variant: staff ? "secondary" : "ghost",
+                    variant: staff ? "secondary" : "outline",
                     size: "lg",
                   }),
                 )}
               >
-                <ShieldCheck className="h-4 w-4" />
+                <LayoutDashboard className="h-4 w-4" />
                 Dashboard
                 {staff && (
                   <span className="ml-0.5 rounded-full bg-grape/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-grape ring-1 ring-grape/30">
