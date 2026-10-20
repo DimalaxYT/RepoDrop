@@ -231,6 +231,8 @@ export class DiscordBot {
   private deps: ClientDeps;
   private socket: SocketLike | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
+  /** Premier battement (jitter) en attente — à annuler comme `timer`. */
+  private firstTimer: ReturnType<typeof setTimeout> | null = null;
   private retry: ReturnType<typeof setTimeout> | null = null;
   private seq: number | null = null;
   private lastSentAt = 0;
@@ -268,21 +270,60 @@ export class DiscordBot {
 
   stop(): void {
     this.stopped = true;
-    if (this.timer) clearInterval(this.timer);
+    this.clearBeatTimers();
     if (this.retry) clearTimeout(this.retry);
-    this.timer = null;
     this.retry = null;
-    try {
-      this.socket?.close(1000, "stop");
-    } catch {
-      /* ignore */
-    }
+    const sock = this.socket;
     this.socket = null;
+    if (sock) {
+      // On détache d'abord : un onclose « retardataire » ne doit pas
+      // planifier de reconnexion après un arrêt explicite.
+      sock.onopen = null;
+      sock.onmessage = null;
+      sock.onerror = null;
+      sock.onclose = null;
+      try {
+        sock.close(1000, "stop");
+      } catch {
+        /* ignore */
+      }
+    }
     this._status.connected = false;
+  }
+
+  private clearBeatTimers(): void {
+    if (this.timer) clearInterval(this.timer);
+    if (this.firstTimer) clearTimeout(this.firstTimer);
+    this.timer = null;
+    this.firstTimer = null;
   }
 
   private open(): void {
     if (this.stopped) return;
+    this.retry = null;
+    // Battements d'une éventuelle session précédente : plus aucun lien.
+    this.clearBeatTimers();
+    // Détache l'ancien socket : ses événements (notamment onclose) ne doivent
+    // plus agir sur la nouvelle connexion — sinon deux cycles de
+    // reconnexion peuvent coexister et se battre.
+    const old = this.socket;
+    this.socket = null;
+    if (old) {
+      old.onopen = null;
+      old.onmessage = null;
+      old.onerror = null;
+      old.onclose = null;
+      try {
+        old.close(1000, "reopen");
+      } catch {
+        /* ignore */
+      }
+    }
+    // Nouvelle session (on n'utilise jamais RESUME) : la séquence et l'état
+    // d'ACK de l'ancienne doivent être oubliés — envoyer un seq d'ancienne
+    // session à une nouvelle fait rejeter les battements par Discord.
+    this.seq = null;
+    this.awaitingAck = false;
     const Ctor =
       this.deps.socketCtor ??
       (globalThis.WebSocket as unknown as SocketCtor | undefined);
@@ -313,8 +354,7 @@ export class DiscordBot {
     socket.onclose = (ev) => {
       const code = (ev as { code?: number } | undefined)?.code ?? 0;
       this._status.connected = false;
-      if (this.timer) clearInterval(this.timer);
-      this.timer = null;
+      this.clearBeatTimers();
       // 4004 = jeton invalide : inutile d'insister.
       if (code === 4004 || code === 4010 || code === 4011 || code === 4012 || code === 4013) {
         this._status.lastError = `Gateway Discord : connexion refusée (code ${code})`;
@@ -327,6 +367,9 @@ export class DiscordBot {
 
   private scheduleRetry(reason: string): void {
     if (this.stopped) return;
+    // Idempotent : si une reconnexion est déjà programmée (ex. déclenchée à
+    // la fois par le détecteur zombie et par onclose), on garde la première.
+    if (this.retry) return;
     this.attempts++;
     this._status.lastError = reason;
     this._status.reconnects = this.attempts;
@@ -411,15 +454,16 @@ export class DiscordBot {
   }
 
   private startHeartbeat(intervalMs: number): void {
-    if (this.timer) clearInterval(this.timer);
+    this.clearBeatTimers();
     // Premier battement décalé (jitter) comme le recommande Discord.
     const jitter = Math.floor(Math.random() * Math.min(5_000, intervalMs));
-    const first = setTimeout(() => {
+    this.firstTimer = setTimeout(() => {
+      this.firstTimer = null;
       this.sendHeartbeat();
       this.timer = setInterval(() => this.beat(), intervalMs);
       this.timer.unref?.();
     }, jitter);
-    first.unref?.();
+    this.firstTimer.unref?.();
   }
 
   private beat(): void {
@@ -431,6 +475,10 @@ export class DiscordBot {
       } catch {
         /* ignore */
       }
+      // Filet : si la fermeture ne déclenche jamais onclose (socket déjà
+      // morte, réseau noyau), on repart quand même. `scheduleRetry` est
+      // idempotent — un onclose tardif ne doublera pas la reconnexion.
+      this.scheduleRetry("heartbeat sans ACK");
       return;
     }
     this.sendHeartbeat();

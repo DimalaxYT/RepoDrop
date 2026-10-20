@@ -31,11 +31,16 @@ export const archivePath = (id: string, format: string) =>
 
 /** Initialisation paresseuse (au premier appel d'une route) :
  *  - marque les jobs interrompus par un redémarrage ;
- *  - démarre le sweeper des dossiers éphémères. */
+ *  - démarre le sweeper des dossiers éphémères ;
+ *  - démarre/auto-répare le moniteur Discord.
+ *
+ * Le drapeau est posé à la **fin** : si une étape échoue, la prochaine
+ * requête retente l'initialisation complète (toutes les étapes sont
+ * idempotentes) au lieu de laisser le worker à moitié mort pour tout le
+ * reste du vie du process. */
 export function ensureWorkerInit(): void {
   const g = globalThis as unknown as { __repodropInit?: boolean };
   if (g.__repodropInit) return;
-  g.__repodropInit = true;
   try {
     failStaleJobs();
   } catch (e) {
@@ -70,14 +75,21 @@ export function ensureWorkerInit(): void {
   sweep();
   const t = setInterval(sweep, 10 * 60_000);
   t.unref?.();
-  pruneEvents(90 * 24 * 3_600_000); // rétention du journal d'activité : 90 jours
+  try {
+    pruneEvents(90 * 24 * 3_600_000); // rétention du journal d'activité : 90 jours
+  } catch (e) {
+    // Best-effort : une purge qui échoue ne doit pas empêcher le démarrage
+    // du moniteur Discord juste en dessous (ni figer l'initialisation).
+    console.error("[worker] pruneEvents:", e);
+  }
 
-  // Bot Discord : démarré avec le worker (no-op si non configuré/désactivé).
+  // Bot Discord : démarrage + auto-réparation (no-op si non configuré).
   try {
     ensureDiscordMonitor();
   } catch (e) {
     console.error("[worker] moniteur Discord :", e);
   }
+  g.__repodropInit = true;
 }
 
 // ---------------------------------------------------------------- extraction

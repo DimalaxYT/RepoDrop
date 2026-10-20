@@ -15,6 +15,7 @@ import { performance } from "node:perf_hooks";
 import { activityStats, logEvent, pingStats, prunePings, recordPing } from "../db";
 import { config } from "../config";
 import {
+  DEFAULT_INTERVAL_MIN,
   getDiscordSettings,
   isWebhookUrl,
   type DiscordSettings,
@@ -128,11 +129,23 @@ interface MonitorState {
   consecutiveFailures: number;
   messagesSent: number;
   inFlight: boolean;
+  /** Depuis quand la sonde en cours tourne (anti-blocage, cf. runTick). */
+  inFlightSince: number | null;
+  /**
+   * Identifiant de la sonde en cours. Une sonde « orpheline » (blocage
+   * d'origine) rendue tardivement ne doit pas libérer le verrou d'une sonde
+   * plus récente : seule la dernière lancée a le droit de libérer l'état.
+   */
+  probeSeq: number;
   /** Premier tick : on sonde sans publier (évite le spam à chaque restart). */
   silent: boolean;
   tokenFingerprint: string;
   /** Nombre de sondes effectuées (déclenche la purge périodique). */
   ticks: number;
+  /** Dernier contrôle automatique de santé (ensureDiscordMonitor). */
+  lastHealAt: number;
+  /** Arrêt explicite depuis le panel : l'auto-réparation ne doit pas relancer. */
+  manualStop: boolean;
 }
 
 function newState(): MonitorState {
@@ -151,9 +164,13 @@ function newState(): MonitorState {
     consecutiveFailures: 0,
     messagesSent: 0,
     inFlight: false,
+    inFlightSince: null,
+    probeSeq: 0,
     silent: true,
     tokenFingerprint: "",
     ticks: 0,
+    lastHealAt: 0,
+    manualStop: false,
   };
 }
 
@@ -175,7 +192,30 @@ function canSend(s: DiscordSettings): boolean {
 
 export function getMonitorStatus(): MonitorStatus {
   const st = state();
-  const s = getDiscordSettings();
+  // Base potentiellement indisponible : le panel doit continuer à s'afficher
+  // (un plantage ici figerait son rafraîchissement pour rien).
+  let s: DiscordSettings;
+  try {
+    s = getDiscordSettings();
+  } catch {
+    s = {
+      enabled: false,
+      token: "",
+      channelId: "",
+      intervalMin: DEFAULT_INTERVAL_MIN,
+      heartbeat: true,
+      notifyPush: true,
+      alertOnDown: true,
+      probeUrl: "",
+      roleMention: "",
+    };
+  }
+  let uptime: MonitorStatus["uptime24h"];
+  try {
+    uptime = pingStats(24 * 3_600_000);
+  } catch {
+    uptime = { total: 0, ok: 0, uptimePct: null, avgLatencyMs: null };
+  }
   return {
     running: st.running,
     configured: canSend(s),
@@ -191,7 +231,7 @@ export function getMonitorStatus(): MonitorStatus {
     lastError: st.lastError,
     consecutiveFailures: st.consecutiveFailures,
     messagesSent: st.messagesSent,
-    uptime24h: pingStats(24 * 3_600_000),
+    uptime24h: uptime,
     bot: st.bot
       ? {
           connected: st.bot.status.connected,
@@ -224,6 +264,7 @@ export function startMonitor(deps: ClientDeps = {}): MonitorStatus {
   st.running = true;
   st.startedAt = Date.now();
   st.silent = true;
+  st.manualStop = false;
   st.tokenFingerprint = fingerprint(s);
 
   // Bot : on ouvre la Gateway pour apparaître en ligne (webhook : rien à faire).
@@ -238,11 +279,19 @@ export function startMonitor(deps: ClientDeps = {}): MonitorStatus {
 
   const periodMs = Math.max(1, s.intervalMin) * 60_000;
   st.nextRunAt = Date.now() + periodMs;
-  st.timer = setInterval(() => void runTick(), periodMs);
+  // `void runTick()` sans .catch : la moindre exception imprévue deviendrait
+  // une unhandled rejection — ce qui FERME le process Node entier. Le tick est
+  // blindé en interne, ce catch est le filet de sécurité double.
+  const tick = (opts?: { silent?: boolean }): void => {
+    void runTick(opts).catch((e) => {
+      console.error("[discord] tick en échec :", e instanceof Error ? e.message : e);
+    });
+  };
+  st.timer = setInterval(() => tick(), periodMs);
   st.timer.unref?.();
 
   // Sonde immédiate (muette) : le panel affiche un état sans attendre 10 min.
-  st.firstProbe = setTimeout(() => void runTick({ silent: true }), 4_000);
+  st.firstProbe = setTimeout(() => tick({ silent: true }), 4_000);
   st.firstProbe.unref?.();
 
   console.log(
@@ -263,6 +312,10 @@ export function stopMonitor(): MonitorStatus {
   st.startedAt = null;
   st.nextRunAt = null;
   st.tokenFingerprint = "";
+  // Arrêt demandé par l'utilisateur : l'auto-réparation (ensureDiscordMonitor)
+  // ne doit pas le défaire. Un redémarrage explicite (panel / réglages) le
+  // remet à false dans startMonitor().
+  st.manualStop = true;
   console.log("[discord] moniteur arrêté");
   return getMonitorStatus();
 }
@@ -285,17 +338,64 @@ export function restartMonitor(deps: ClientDeps = {}): MonitorStatus {
 }
 
 /**
- * Initialisation paresseuse : appelée par `ensureWorkerInit()` (lib/jobs.ts).
- * Idempotente, comme le reste du worker.
+ * Intervalle minimal entre deux contrôles de santé automatiques : le moniteur
+ * est vérifié à chaque requête (`ensureWorkerInit`), mais au plus une fois
+ * toutes les 30 s pour ne pas relire les réglages à chaque appel.
+ */
+const HEAL_INTERVAL_MS = 30_000;
+
+/**
+ * Initialisation + **auto-réparation** : appelée par `ensureWorkerInit()`
+ * (lib/jobs.ts) sur chaque requête, bridée à une vérification toutes les 30 s.
+ *
+ * À l'ancienne, un simple drapeau `__repodropMonitorInit` faisait un seul
+ * essai de démarrage par process : si cet essai échouait (base pas encore
+ * prête, jeton configuré plus tard, timer perdu lors d'un rechargement de
+ * module…), plus jamais rien ne relançait le moniteur — « 2 ou 3 pings puis
+ * ça s'arrête ». Maintenant :
+ *  - démarre le moniteur dès qu'il est activé + configuré ;
+ *  - relance si le timer a disparu ou si le démarrage initial a échoué ;
+ *  - respecte un arrêt explicite depuis le panel (`manualStop`) ;
+ *  - expose une erreur lisible si le jeton est devenu illisible
+ *    (SESSION_SECRET absent/changé : le chiffré en base ne s'ouvre plus).
  */
 export function ensureDiscordMonitor(): void {
-  const g = globalThis as unknown as { __repodropMonitorInit?: boolean };
-  if (g.__repodropMonitorInit) return;
-  g.__repodropMonitorInit = true;
+  const st = state();
+  const now = Date.now();
+  if (now - st.lastHealAt < HEAL_INTERVAL_MS) return;
+  st.lastHealAt = now;
   try {
-    startMonitor();
+    const s = getDiscordSettings();
+    if (s.enabled && canSend(s)) {
+      if (st.manualStop) return;
+      if (!st.running || !st.timer) {
+        console.warn(
+          "[discord] moniteur absent : démarrage/relance automatique",
+        );
+        startMonitor(st.deps);
+      }
+      return;
+    }
+    if (s.enabled && !canSend(s)) {
+      const msg =
+        "Bot activé mais non configuré : jeton Discord absent ou illisible " +
+        "(SESSION_SECRET changé ?). Ressaisissez-le dans le panel staff.";
+      if (st.lastError !== msg) {
+        st.lastError = msg;
+        console.error("[discord]", msg);
+        logEvent({
+          kind: "discord",
+          detail: { action: "heal", ok: false, error: msg },
+        });
+      }
+      return;
+    }
+    // Désactivé : rien à faire (l'activation passe par le panel, qui
+    // redémarre le moniteur lui-même via restartMonitor).
   } catch (e) {
-    console.error("[discord] démarrage impossible :", e);
+    const msg = e instanceof Error ? e.message : String(e);
+    st.lastError = `Réglages Discord illisibles : ${msg}`.slice(0, 200);
+    console.error("[discord] réglages illisibles :", msg);
   }
 }
 
@@ -311,36 +411,100 @@ export interface TickOutcome {
 /**
  * Un cycle complet : sonde → base → Discord.
  * `force` ignore la politique d'envoi (bouton « Ping maintenant » du panel).
+ *
+ * **Ne rejette jamais** : toute exception interne (base indisponible, stats,
+ * réglages illisibles…) est convertie en probe/erreur. Le timer du moniteur
+ * appelle ce tick via `void …` : une rejection non attrapée tuerait le
+ * process Node entier, et le moniteur avec.
  */
 export async function runTick(
   opts: { silent?: boolean; force?: boolean } = {},
 ): Promise<TickOutcome> {
   const st = state();
+  try {
+    return await runTickGuarded(opts, st);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // InFlight n'est pas touché ici : le `finally` de la sonde en cours (le
+    // sien ou celui d'un tick concurrent) fait déjà ce travail correctement.
+    st.lastError = msg;
+    console.error("[discord] tick en échec :", msg);
+    try {
+      logEvent({
+        kind: "discord",
+        detail: { action: "tick", ok: false, error: msg.slice(0, 300) },
+      });
+    } catch {
+      /* journal indisponible : rien de plus à faire */
+    }
+    let url = "";
+    try {
+      url = resolveProbeUrl(getDiscordSettings());
+    } catch {
+      /* settings indisponibles : l'URL restera vide */
+    }
+    return {
+      probe: {
+        url,
+        ok: false,
+        latencyMs: null,
+        status: null,
+        error: msg,
+        checkedAt: Date.now(),
+      },
+      sent: false,
+      error: msg,
+    };
+  }
+}
+
+async function runTickGuarded(
+  opts: { silent?: boolean; force?: boolean },
+  st: MonitorState,
+): Promise<TickOutcome> {
   const s = getDiscordSettings();
   const silent = opts.silent ?? st.silent;
   st.silent = false;
 
   if (st.inFlight) {
-    return {
-      probe: {
-        url: resolveProbeUrl(s),
-        ok: false,
-        latencyMs: null,
-        status: null,
-        error: "sonde précédente encore en cours",
-        checkedAt: Date.now(),
-      },
-      sent: false,
-    };
+    const stuckMs =
+      st.inFlightSince !== null ? Date.now() - st.inFlightSince : Infinity;
+    // Une sonde ne peut légalement pas dépasser le timeout + marge : passé ce
+    // délai, elle est « orpheline » (fetch qui n'a jamais tenu son abort) et on
+    // relance. Sans ce garde-fou, un seul blocage gelait définitivement le
+    // moniteur ET le bouton « Ping maintenant ».
+    if (stuckMs < DEFAULT_PROBE_TIMEOUT_MS + 15_000) {
+      return {
+        probe: {
+          url: resolveProbeUrl(s),
+          ok: false,
+          latencyMs: null,
+          status: null,
+          error: "sonde précédente encore en cours",
+          checkedAt: Date.now(),
+        },
+        sent: false,
+      };
+    }
+    console.warn(
+      `[discord] sonde bloquée depuis ${Math.round(stuckMs / 1000)} s : relance forcée`,
+    );
+    // Pas de remise à zéro ici : on prend le verrou avec un nouvel identifiant,
+    // l'ancienne sonde (si elle termine un jour) ne libérera que la sienne.
   }
-  st.inFlight = true;
 
-  const url = resolveProbeUrl(s);
+  const probeId = ++st.probeSeq;
+  st.inFlight = true;
+  st.inFlightSince = Date.now();
   let probe: SiteProbe;
   try {
+    const url = resolveProbeUrl(s);
     probe = await probeSite(url, DEFAULT_PROBE_TIMEOUT_MS, st.deps);
   } finally {
-    st.inFlight = false;
+    if (st.probeSeq === probeId) {
+      st.inFlight = false;
+      st.inFlightSince = null;
+    }
   }
 
   const wasDown = st.lastOk === false;
