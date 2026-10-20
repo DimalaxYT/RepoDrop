@@ -99,7 +99,8 @@ npx next dev -H 0.0.0.0 -p 10000
 4. **Destination** :
    - **Nouveau dépôt** : nom + privé/public ;
    - **Dépôt existant** : choisissez parmi vos dépôts (droits d'écriture vérifiés côté API) ;
-   - option **branche dédiée** pour ne jamais toucher à la branche par défaut.
+   - option **branche dédiée** pour ne jamais toucher à la branche par défaut ;
+   - option **« Remplacer tout le code »** (dépôt existant, confirmation explicite) : le dépôt contiendra exactement les fichiers de l'archive — ceux absents de l'archive sont supprimés — et le push est forcé, donc il réussit même si le dépôt a avancé entre-temps (fini le rejet `[rejected] … (fetch first)`). L'historique est conservé : le remplacement est un nouveau commit par-dessus. Si un push classique échoue pour cette raison, l'écran d'échec propose directement de **réessayer en remplaçant tout le code**, sans ré-uploader l'archive.
 5. **Pousser** → commit créé sous `votre-login <votre-login@users.noreply.github.com>`, suivi en direct, lien vers le dépôt.
 6. **Liens IA** : après le push, RepoDrop affiche une série de liens prêts à donner à un agent IA / humain :
    - URL GitHub classique, branche, commit et **Codespaces** (`vscode.dev` + Copilot intégrés) ;

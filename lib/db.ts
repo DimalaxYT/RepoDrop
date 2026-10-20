@@ -172,6 +172,7 @@ function rowToRecord(row: JobRow): JobRecord {
     status: row.status,
     error: row.error,
     preview: row.preview ? (JSON.parse(row.preview) as ArchivePreview) : null,
+    pushOpts: row.push_opts ? (JSON.parse(row.push_opts) as PushOptions) : null,
     push: row.push_result ? (JSON.parse(row.push_result) as JobRecord["push"]) : null,
     archiveSize: row.archive_size,
     createdAt: row.created_at,

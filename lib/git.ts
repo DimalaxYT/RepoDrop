@@ -118,8 +118,26 @@ export interface PushRun {
   authorLogin: string;
   /** false = exclure node_modules lors de la copie */
   includeNodeModules: boolean;
+  /**
+   * true = remplacer tout le code de la branche cible : l'arborescence du
+   * dépôt devient exactement celle de l'archive (fichiers absents supprimés)
+   * et le push est forcé, donc un avancement du dépôt entre-temps ne peut
+   * plus provoquer de rejet « non-fast-forward ». L'historique existant est
+   * conservé : le remplacement est un nouveau commit par-dessus (le `--force`
+   * ne sert qu'à écraser ce qui a pu arriver après notre `fetch`).
+   */
+  replaceAll?: boolean;
   /** Override test : URL du remote (défaut : https://github.com/<full>.git) */
   remoteUrl?: string;
+}
+
+/** Vide l'arborescence de travail (tout sauf `.git`) — mode « remplacer tout ». */
+async function clearWorkTree(workDir: string): Promise<void> {
+  const items = await fs.promises.readdir(workDir);
+  for (const name of items) {
+    if (name === ".git") continue;
+    await fs.promises.rm(path.join(workDir, name), { recursive: true, force: true });
+  }
 }
 
 /** Copie récursive du contenu de `src` vers `dest` (merge/overwrite). */
@@ -178,8 +196,14 @@ export async function runGitPush(run: PushRun): Promise<{ sha: string; url: stri
     await g(["checkout", "-q", "-B", run.branch, "FETCH_HEAD"]);
   }
 
-  // 3. Superposition des fichiers de l'archive (les fichiers existants qui ne
-  //    sont pas dans l'archive sont conservés ; conflits = l'archive gagne).
+  // 3. Fichiers de l'archive.
+  //    - Mode normal : superposition (les fichiers existants absents de
+  //      l'archive sont conservés ; conflits = l'archive gagne).
+  //    - Mode « remplacer tout » : on vide d'abord l'arborescence (sauf .git),
+  //      donc le commit final décrit exactement le contenu de l'archive.
+  if (run.replaceAll) {
+    await clearWorkTree(workDir);
+  }
   await overlayCopy(run.srcDir, workDir, run.includeNodeModules);
 
   // 4. Rien à pousser ?
@@ -192,8 +216,17 @@ export async function runGitPush(run: PushRun): Promise<{ sha: string; url: stri
   await g(["add", "-A"]);
   await g(["commit", "-q", "-m", run.commitMessage], 60_000);
 
-  // 6. Push (création de la branche distante si nécessaire).
-  await g(["push", "-q", "-u", "origin", `HEAD:${run.branch}`], 180_000);
+  // 6. Push (création de la branche distante si nécessaire). En mode
+  //    « remplacer tout », `--force` : si le dépôt a avancé après notre fetch
+  //    (c'est exactement l'échec « [rejected] fetch first » rapporté), la
+  //    branche est écrasée au lieu de rejeter le push. Pas de `--force` hors
+  //    de ce mode : un push normal ne doit jamais écraser en silence.
+  await g(
+    run.replaceAll
+      ? ["push", "-q", "--force", "-u", "origin", `HEAD:${run.branch}`]
+      : ["push", "-q", "-u", "origin", `HEAD:${run.branch}`],
+    180_000,
+  );
 
   const sha = (await g(["rev-parse", "HEAD"])).trim();
   return { sha, url: `https://github.com/${run.target.fullName}` };

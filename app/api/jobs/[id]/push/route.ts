@@ -21,6 +21,7 @@ const pushSchema = z
     dedicatedBranch: z.boolean().optional(),
     branchName: z.string().trim().max(100).optional(),
     includeNodeModules: z.boolean().optional(),
+    replaceAll: z.boolean().optional(),
     stripRoot: z.boolean().optional(),
     commitMessage: z.string().trim().max(200).optional(),
   })
@@ -46,7 +47,13 @@ export async function POST(req: Request, { params }: Params): Promise<Response> 
   const job = jobOwnedBy(id, session.login);
   if (!job) return jsonError("Job introuvable.", 404);
 
-  if (job.status !== "ready") {
+  // « ready » = premier push. Un job « failed » dont l'aperçu (et donc
+  // l'extraction) existe encore peut être RELANCÉ — typiquement en mode
+  // « remplacer tout » après un rejet non-fast-forward, sans ré-uploader
+  // l'archive. Les dossiers sont purgés ~15 min après l'échec : au-delà,
+  // runPush échouera proprement en INTERRUPTED.
+  const retryable = job.status === "failed" && job.preview !== null;
+  if (job.status !== "ready" && !retryable) {
     return jsonError("Ce job n'est pas prêt à être poussé.", 409);
   }
 
@@ -77,6 +84,7 @@ export async function POST(req: Request, { params }: Params): Promise<Response> 
     stripRoot: opts.stripRoot !== false,
     includeNodeModules: opts.includeNodeModules === true,
     dedicatedBranch: opts.dedicatedBranch === true,
+    replaceAll: opts.replaceAll === true,
   };
 
   const { updateJob } = await import("@/lib/db");

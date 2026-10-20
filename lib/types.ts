@@ -56,6 +56,15 @@ export interface PushOptions {
   branchName?: string;
   /** Inclure les dossiers node_modules (strippés par défaut) */
   includeNodeModules?: boolean;
+  /**
+   * Remplacer TOUT le code de la branche cible (dépôt existant uniquement) :
+   * l'arborescence poussée devient exactement celle de l'archive (les
+   * fichiers absents de l'archive sont supprimés du dépôt) et le push est
+   * forcé (`--force`), donc un dépôt qui a avancé entre-temps n'est plus
+   * un motif de rejet « non-fast-forward ». Destructif : confirmation
+   * explicite exigée côté UI.
+   */
+  replaceAll?: boolean;
   /** Retirer le dossier racine unique (ex: "mon-projet/") — défaut true */
   stripRoot?: boolean;
   /** Message de commit (défaut : message auto) */
@@ -70,6 +79,10 @@ export interface JobRecord {
   status: JobStatus;
   error: string | null;
   preview: ArchivePreview | null;
+  /** Options du dernier push tenté (null tant qu'aucun push n'a été lancé).
+   *  Sert à proposer une relance (ex. en mode « remplacer tout ») après un
+   *  échec, sans redemander la destination à l'utilisateur. */
+  pushOpts: PushOptions | null;
   push: {
     url: string; // URL du dépôt
     /** "owner/repo" (dérivé de `url` si absent : anciens jobs) */

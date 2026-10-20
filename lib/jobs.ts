@@ -239,7 +239,13 @@ async function runPush(
       const slug =
         job.filename.replace(/\.[^.]+$/, "").toLowerCase() || "archive";
       branch = sanitizeBranch(opts.branchName?.trim() || `import/${slug}`);
-      if (!target.isEmpty && (await branchExists(token, target.fullName, branch))) {
+      // En mode « remplacer tout », une branche dédiée déjà existante est
+      // écrasée (c'est le but du mode) ; sinon on refuse de la toucher.
+      if (
+        !opts.replaceAll &&
+        !target.isEmpty &&
+        (await branchExists(token, target.fullName, branch))
+      ) {
         throw new AppError("NAME_INVALID", undefined, "la branche existe déjà");
       }
     } else {
@@ -261,6 +267,9 @@ async function runPush(
       commitMessage,
       authorLogin: job.login,
       includeNodeModules: opts.includeNodeModules === true,
+      // Le remplacement intégral n'a de sens que pour un dépôt existant :
+      // un dépôt neuf est déjà vide, on ignore donc l'option dans ce cas.
+      replaceAll: opts.mode === "existing" && opts.replaceAll === true,
     });
 
     updateJob(jobId, {
@@ -293,6 +302,7 @@ async function runPush(
         filename: job.filename,
         created,
         mode: opts.mode,
+        replaceAll: opts.replaceAll === true,
       },
     });
     void announcePush({

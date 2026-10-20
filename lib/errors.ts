@@ -65,7 +65,7 @@ const FR: Record<ErrorCode, string> = {
   NAME_INVALID: "Nom de dépôt ou de branche invalide.",
   NO_CHANGES: "Rien à pousser : les fichiers correspondent déjà au dépôt destination.",
   CONFLICT:
-    "Le dépôt destination a changé entre-temps. Réessayez (ou poussez sur une branche dédiée).",
+    "Le dépôt destination a changé entre-temps. Réessayez, poussez sur une branche dédiée, ou relancez en mode « Remplacer tout le code » pour écraser la branche avec le contenu de l'archive.",
   SCOPE_MISSING:
     "GitHub refuse la modification des fichiers de workflow (.github/workflows/…) : le jeton n'a pas le scope « workflow ». Déconnectez-vous puis reconnectez-vous pour l'accorder.",
   GIT_FAILED: "Le push vers GitHub a échoué.",
