@@ -59,16 +59,29 @@ export function DiscordSettings({
   const [message, setMessage] = useState<{ kind: "ok" | "err"; text: string } | null>(
     null,
   );
+  // Erreur du rafraîchissement automatique : sans elle, une session expirée ou
+  // un serveur en erreur figeait le panneau « État du bot » sans aucun indice.
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   // Rafraîchit l'état du moniteur (sonde en cours, prochaine exécution…).
   const refreshStatus = useCallback(async () => {
     try {
       const res = await fetch("/api/staff/discord", { cache: "no-store" });
-      if (!res.ok) return;
+      if (!res.ok) {
+        setStatusError(
+          res.status === 401 || res.status === 403
+            ? "Session expirée (ou panel verrouillé) : reconnectez-vous pour suivre l'état du bot."
+            : `Actualisation impossible (HTTP ${res.status}).`,
+        );
+        return;
+      }
       const body = (await res.json()) as { status?: MonitorStatus };
-      if (body.status) setStatus(body.status);
+      if (body.status) {
+        setStatus(body.status);
+        setStatusError(null);
+      }
     } catch {
-      /* ignore */
+      setStatusError("Actualisation impossible (serveur injoignable).");
     }
   }, []);
 
@@ -428,6 +441,14 @@ export function DiscordSettings({
               </Row>
             </dl>
 
+            {statusError && (
+              <p
+                role="status"
+                className="rounded-lg bg-amber/10 p-2.5 text-xs leading-relaxed text-amber ring-1 ring-amber/30"
+              >
+                {statusError}
+              </p>
+            )}
             {status.lastError && (
               <p className="rounded-lg bg-danger/10 p-2.5 text-xs text-danger ring-1 ring-danger/25">
                 {status.lastError}
