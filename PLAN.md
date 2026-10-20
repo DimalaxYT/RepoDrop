@@ -297,3 +297,25 @@ n'est pas affectée, et les deux lignes `staff:unlock:*` sont présentes en base
 252 tests couvrent l'ensemble, dont 56 nouveaux : 13 sur le rate-limit persisté,
 15 sur les garde-fous de la couche jobs, 28 en intégration HTTP réelle contre la
 fausse API GitHub.
+
+### Durcissement HTTP et configuration
+
+| Sujet | Avant | Après |
+| --- | --- | --- |
+| En-têtes de sécurité | `nosniff` sur 2 routes de téléchargement seulement | CSP, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, `X-DNS-Prefetch-Control`, HSTS sur **toutes** les réponses |
+| Logique des en-têtes | — | `lib/security-headers.ts`, testée (17 tests) ; `next.config.ts` ne fait que la câbler |
+| `SESSION_SECRET` absent | clé tirée au hasard **en silence** : sessions invalidées et jeton Discord chiffré illisible au redémarrage | serveur **refusé** en production avec un message explicite ; avertissement en dev |
+| Bouton « recharger » | icône seule, `title` uniquement | `aria-label` ajouté |
+
+Deux pièges documentés dans le code plutôt que laissés à découvrir :
+
+- `script-src`/`style-src` gardent `'unsafe-inline'` (amorçage Next.js) ;
+  `'unsafe-eval'` n'est ajouté qu'en développement, pour React Refresh.
+- `FRAME_ANCESTORS` est lu **au build** : Next.js résout `headers()` pendant
+  `next build` et fige le résultat dans `.next/routes-manifest.json`. Vérifié
+  dans les deux sens — posée au runtime seulement, la variable n'a aucun effet ;
+  posée à la compilation, `frame-ancestors 'self'` et `X-Frame-Options`
+  apparaissent. Par défaut aucune directive n'est émise, pour ne pas casser
+  l'affichage dans une iframe.
+
+269 tests couvrent l'ensemble, dont 17 sur les en-têtes de sécurité.
