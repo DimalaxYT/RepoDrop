@@ -46,6 +46,37 @@ function open(): DatabaseSync {
     );
     CREATE INDEX IF NOT EXISTS idx_jobs_login_created ON jobs(login, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_jobs_login_pushed ON jobs(login, updated_at);
+
+    /* Journal d'activité (panel staff) : qui a poussé quoi, quand. */
+    CREATE TABLE IF NOT EXISTS events (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind       TEXT NOT NULL,
+      login      TEXT,
+      detail     TEXT,
+      ip         TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_events_login ON events(login, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_events_kind ON events(kind, created_at DESC);
+
+    /* Réglages applicatifs (le jeton Discord y est stocké CHIFFRÉ). */
+    CREATE TABLE IF NOT EXISTS settings (
+      key        TEXT PRIMARY KEY,
+      value      TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    /* Sondes de disponibilité (ping Discord toutes les N minutes). */
+    CREATE TABLE IF NOT EXISTS pings (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      ok         INTEGER NOT NULL,
+      latency_ms INTEGER,
+      status     INTEGER,
+      error      TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pings_created ON pings(created_at DESC);
   `);
   return db;
 }
@@ -193,5 +224,338 @@ export function cleanupOldJobsDir(jobsDir: string, maxAgeMs: number): void {
     } catch {
       /* ignore */
     }
+  }
+}
+
+/* ------------------------------------------------------- journal d'activité */
+
+/**
+ * Types d'événements tracés. `push` est celui qui répond à « qui a poussé du
+ * code, et quand » : le détail porte le dépôt, la branche, le SHA, le volume.
+ */
+export type EventKind =
+  | "upload"
+  | "push"
+  | "login"
+  | "logout"
+  | "settings"
+  | "discord"
+  | "system";
+
+export interface ActivityEvent {
+  id: number;
+  kind: EventKind;
+  login: string | null;
+  detail: Record<string, unknown> | null;
+  ip: string | null;
+  createdAt: number;
+}
+
+interface EventRow {
+  id: number;
+  kind: string;
+  login: string | null;
+  detail: string | null;
+  ip: string | null;
+  created_at: number;
+}
+
+/** Écrit un événement. N'échoue JAMAIS : la traçabilité ne bloque pas le flux. */
+export function logEvent(e: {
+  kind: EventKind;
+  login?: string | null;
+  ip?: string | null;
+  detail?: Record<string, unknown> | null;
+}): void {
+  try {
+    getDb()
+      .prepare(
+        `INSERT INTO events (kind, login, detail, ip, created_at) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        e.kind,
+        e.login ?? null,
+        e.detail ? JSON.stringify(e.detail) : null,
+        e.ip ?? null,
+        Date.now(),
+      );
+  } catch (err) {
+    console.error("[db] logEvent:", err);
+  }
+}
+
+function rowToEvent(row: EventRow): ActivityEvent {
+  let detail: Record<string, unknown> | null = null;
+  if (row.detail) {
+    try {
+      detail = JSON.parse(row.detail) as Record<string, unknown>;
+    } catch {
+      detail = null;
+    }
+  }
+  return {
+    id: row.id,
+    kind: row.kind as EventKind,
+    login: row.login,
+    detail,
+    ip: row.ip,
+    createdAt: row.created_at,
+  };
+}
+
+export interface EventQuery {
+  limit?: number;
+  offset?: number;
+  kind?: EventKind;
+  login?: string;
+  /** Sous-chaîne recherchée dans login + détail JSON. */
+  q?: string;
+}
+
+function eventWhere(opts: EventQuery): { sql: string; params: (string | number)[] } {
+  const clauses: string[] = [];
+  const params: (string | number)[] = [];
+  if (opts.kind) {
+    clauses.push("kind = ?");
+    params.push(opts.kind);
+  }
+  if (opts.login) {
+    clauses.push("login = ?");
+    params.push(opts.login);
+  }
+  if (opts.q) {
+    clauses.push("(login LIKE ? OR detail LIKE ?)");
+    const like = `%${opts.q}%`;
+    params.push(like, like);
+  }
+  return {
+    sql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
+    params,
+  };
+}
+
+export function listEvents(opts: EventQuery = {}): ActivityEvent[] {
+  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 500);
+  const offset = Math.max(opts.offset ?? 0, 0);
+  const w = eventWhere(opts);
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM events ${w.sql} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
+    )
+    .all(...w.params, limit, offset) as unknown as EventRow[];
+  return rows.map(rowToEvent);
+}
+
+export function countEvents(opts: EventQuery = {}): number {
+  const w = eventWhere(opts);
+  const row = getDb()
+    .prepare(`SELECT COUNT(*) AS n FROM events ${w.sql}`)
+    .get(...w.params) as { n: number };
+  return Number(row.n);
+}
+
+/**
+ * Utilisateurs distincts ayant au moins un événement (pour les filtres).
+ *
+ * Les lignes de `node:sqlite` ont un prototype `null`, que la sérialisation
+ * RSC refuse (« Only plain objects… ») : on recopie donc dans des objets
+ * littéraux avant de les renvoyer.
+ */
+export function listEventLogins(
+  limit = 50,
+): { login: string; events: number; lastAt: number }[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT login, COUNT(*) AS events, MAX(created_at) AS lastAt
+       FROM events WHERE login IS NOT NULL AND login <> ''
+       GROUP BY login ORDER BY lastAt DESC LIMIT ?`,
+    )
+    .all(limit) as unknown as {
+    login: string;
+    events: number | bigint;
+    lastAt: number | bigint;
+  }[];
+  return rows.map((r) => ({
+    login: String(r.login),
+    events: Number(r.events),
+    lastAt: Number(r.lastAt),
+  }));
+}
+
+/** Statistiques d'activité pour l'en-tête du panel staff. */
+export interface ActivityStats {
+  totalJobs: number;
+  totalPushes: number;
+  failedPushes: number;
+  pushes24h: number;
+  users24h: number;
+  lastPushAt: number | null;
+}
+
+export function activityStats(): ActivityStats {
+  const db = getDb();
+  const one = <T>(sql: string, ...params: (string | number)[]): T =>
+    db.prepare(sql).get(...params) as T;
+  const day = Date.now() - 24 * 3_600_000;
+  return {
+    totalJobs: one<{ n: number }>(`SELECT COUNT(*) AS n FROM jobs`).n,
+    totalPushes: one<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM events WHERE kind = 'push'`,
+    ).n,
+    failedPushes: one<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM events WHERE kind = 'push' AND json_extract(detail, '$.ok') = 0`,
+    ).n,
+    pushes24h: one<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM events WHERE kind = 'push' AND created_at >= ?`,
+      day,
+    ).n,
+    users24h: one<{ n: number }>(
+      `SELECT COUNT(DISTINCT login) AS n FROM events WHERE created_at >= ? AND login IS NOT NULL`,
+      day,
+    ).n,
+    lastPushAt:
+      one<{ at: number | null }>(
+        `SELECT MAX(created_at) AS at FROM events WHERE kind = 'push'`,
+      ).at ?? null,
+  };
+}
+
+/** Purge les événements plus vieux que `maxAgeMs` (rétention configurable). */
+export function pruneEvents(maxAgeMs: number): number {
+  const res = getDb()
+    .prepare(`DELETE FROM events WHERE created_at < ?`)
+    .run(Date.now() - maxAgeMs);
+  return Number(res.changes ?? 0);
+}
+
+/* ------------------------------------------------------------------ réglages */
+
+/**
+ * Lecture/écriture brute des réglages. Les valeurs SENSIBLES doivent être
+ * chiffrées par l'appelant (cf. lib/settings.ts) — la base ne voit jamais un
+ * jeton en clair.
+ */
+export function getSettingRaw(key: string): string | null {
+  const row = getDb()
+    .prepare(`SELECT value FROM settings WHERE key = ?`)
+    .get(key) as { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+export function setSettingRaw(key: string, value: string): void {
+  getDb()
+    .prepare(
+      `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    )
+    .run(key, value, Date.now());
+}
+
+export function deleteSettingRaw(key: string): void {
+  getDb().prepare(`DELETE FROM settings WHERE key = ?`).run(key);
+}
+
+export function listSettingsRaw(): Record<string, { value: string; updatedAt: number }> {
+  const rows = getDb()
+    .prepare(`SELECT key, value, updated_at FROM settings`)
+    .all() as { key: string; value: string; updated_at: number }[];
+  return Object.fromEntries(
+    rows.map((r) => [r.key, { value: r.value, updatedAt: r.updated_at }]),
+  );
+}
+
+/* ------------------------------------------------- sondes de disponibilité */
+
+export interface PingRecord {
+  ok: boolean;
+  latencyMs: number | null;
+  status: number | null;
+  error?: string | null;
+}
+
+export function recordPing(p: PingRecord): void {
+  try {
+    getDb()
+      .prepare(
+        `INSERT INTO pings (ok, latency_ms, status, error, created_at) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        p.ok ? 1 : 0,
+        p.latencyMs,
+        p.status,
+        p.error ?? null,
+        Date.now(),
+      );
+  } catch (err) {
+    console.error("[db] recordPing:", err);
+  }
+}
+
+export interface PingRow {
+  id: number;
+  ok: boolean;
+  latencyMs: number | null;
+  status: number | null;
+  error: string | null;
+  createdAt: number;
+}
+
+export function listPings(limit = 60): PingRow[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT id, ok, latency_ms, status, error, created_at FROM pings
+       ORDER BY created_at DESC, id DESC LIMIT ?`,
+    )
+    .all(Math.min(Math.max(limit, 1), 500)) as unknown as {
+    id: number;
+    ok: number;
+    latency_ms: number | null;
+    status: number | null;
+    error: string | null;
+    created_at: number;
+  }[];
+  return rows.map((r) => ({
+    id: r.id,
+    ok: r.ok === 1,
+    latencyMs: r.latency_ms,
+    status: r.status,
+    error: r.error,
+    createdAt: r.created_at,
+  }));
+}
+
+export function pingStats(windowMs = 24 * 3_600_000): {
+  total: number;
+  ok: number;
+  uptimePct: number | null;
+  avgLatencyMs: number | null;
+} {
+  const row = getDb()
+    .prepare(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN ok = 1 THEN 1 ELSE 0 END) AS ok,
+              AVG(CASE WHEN ok = 1 THEN latency_ms END) AS avgLatency
+       FROM pings WHERE created_at >= ?`,
+    )
+    .get(Date.now() - windowMs) as {
+    total: number;
+    ok: number | null;
+    avgLatency: number | null;
+  };
+  const total = Number(row.total ?? 0);
+  const ok = Number(row.ok ?? 0);
+  return {
+    total,
+    ok,
+    uptimePct: total === 0 ? null : Math.round((ok / total) * 1000) / 10,
+    avgLatencyMs: row.avgLatency === null ? null : Math.round(Number(row.avgLatency)),
+  };
+}
+
+export function prunePings(maxAgeMs = 7 * 24 * 3_600_000): void {
+  try {
+    getDb().prepare(`DELETE FROM pings WHERE created_at < ?`).run(Date.now() - maxAgeMs);
+  } catch (err) {
+    console.error("[db] prunePings:", err);
   }
 }

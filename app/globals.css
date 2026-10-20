@@ -2,17 +2,25 @@
 
 /* ------------------------------------------------------------------ thème */
 @theme {
-  --color-ink: #0a0d14; /* fond de page */
+  /* Fonds */
+  --color-ink: #080b12; /* fond de page */
+  --color-ink2: #0b0f18; /* fond alternatif (sections) */
   --color-panel: #10141f; /* cartes */
-  --color-panel2: #161b2a; /* panneaux imbriqués */
+  --color-panel2: #171d2c; /* panneaux imbriqués */
   --color-edge: #232a3b; /* bordures */
-  --color-chalk: #e5eaf3; /* texte principal */
-  --color-mist: #93a0b4; /* texte atténué */
-  --color-go: #34d399; /* accent : push / vert */
+  --color-edge2: #2f3950; /* bordures marquées */
+
+  /* Texte */
+  --color-chalk: #e7ecf5;
+  --color-mist: #93a0b4;
+
+  /* Accents */
+  --color-go: #34d399; /* vert : push, succès */
   --color-godim: #0e9f6e;
-  --color-sky: #38bdf8; /* accent secondaire */
+  --color-sky: #38bdf8; /* bleu : info, liens */
   --color-amber: #fbbf24; /* avertissements */
   --color-danger: #f87171; /* erreurs */
+  --color-grape: #a78bfa; /* violet : staff */
 
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
@@ -21,10 +29,18 @@
     ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
     monospace;
 
+  /* Ombres */
+  --shadow-panel: 0 1px 0 0 rgba(255, 255, 255, 0.03) inset, 0 18px 40px -24px rgba(0, 0, 0, 0.9);
+  --shadow-glow: 0 0 40px -12px rgba(52, 211, 153, 0.45);
+
   --animate-fade-up: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-fade-in: fade-in 0.4s ease-out both;
   --animate-shimmer: shimmer 1.6s linear infinite;
   --animate-indeterminate: indeterminate 1.4s ease-in-out infinite;
+  --animate-aurora: aurora 18s ease-in-out infinite alternate;
+  --animate-float: float 7s ease-in-out infinite;
+  --animate-pulse-ring: pulse-ring 2.4s ease-out infinite;
+  --animate-spin-slow: spin 14s linear infinite;
 
   @keyframes fade-up {
     from {
@@ -60,6 +76,41 @@
       transform: translateX(320%);
     }
   }
+  /* Halos du hero qui dérivent lentement. */
+  @keyframes aurora {
+    0% {
+      transform: translate3d(-4%, -2%, 0) scale(1);
+      opacity: 0.75;
+    }
+    50% {
+      transform: translate3d(3%, 4%, 0) scale(1.12);
+      opacity: 1;
+    }
+    100% {
+      transform: translate3d(-2%, 2%, 0) scale(1.04);
+      opacity: 0.8;
+    }
+  }
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
+  }
+  @keyframes pulse-ring {
+    0% {
+      box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.35);
+    }
+    70% {
+      box-shadow: 0 0 0 12px rgba(52, 211, 153, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);
+    }
+  }
 }
 
 @layer base {
@@ -72,42 +123,112 @@
     color: var(--color-chalk);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
   }
   ::selection {
     background: color-mix(in srgb, var(--color-go) 35%, transparent);
   }
-  /* barres de défilement discrètes */
+  /* Barres de défilement discrètes (Firefox + WebKit). */
   * {
     scrollbar-width: thin;
     scrollbar-color: var(--color-edge) transparent;
   }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-edge);
+    border-radius: 9999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-edge2);
+    background-clip: content-box;
+  }
+  :focus-visible {
+    outline: none;
+  }
 }
 
+/* ---------------------------------------------------------------- utilitaires */
+
+/** Carte standard : léger dégradé, filet lumineux en haut, ombre douce. */
 @utility panel {
-  background-color: var(--color-panel);
+  position: relative;
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-panel2) 55%, var(--color-panel)),
+    var(--color-panel)
+  );
   border: 1px solid var(--color-edge);
   border-radius: 1rem;
+  box-shadow: var(--shadow-panel);
 }
 
-/* fond décoratif du hero : grille + halos */
-@utility hero-bg {
-  background-image:
-    radial-gradient(ellipse 60% 50% at 50% -10%, rgba(56, 189, 248, 0.14), transparent),
-    radial-gradient(ellipse 45% 40% at 80% 20%, rgba(52, 211, 153, 0.1), transparent),
-    linear-gradient(to bottom, transparent, var(--color-ink)),
-    linear-gradient(rgba(35, 42, 59, 0.5) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(35, 42, 59, 0.5) 1px, transparent 1px);
-  background-size:
-    100% 100%,
-    100% 100%,
-    100% 100%,
-    42px 42px,
-    42px 42px;
+/** Verre dépoli (en-tête, surcouches). */
+@utility glass {
+  background-color: color-mix(in srgb, var(--color-ink) 72%, transparent);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
 }
 
+/** Titre en dégradé vert → bleu. */
 @utility text-gradient {
-  background: linear-gradient(100deg, var(--color-go), var(--color-sky));
+  background-image: linear-gradient(
+    100deg,
+    var(--color-go),
+    var(--color-sky) 55%,
+    var(--color-grape)
+  );
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+
+/** Fond du hero : grille technique + halos colorés animés. */
+@utility hero-bg {
+  background-image:
+    radial-gradient(ellipse 55% 45% at 18% -8%, rgba(56, 189, 248, 0.18), transparent 70%),
+    radial-gradient(ellipse 45% 40% at 82% 8%, rgba(52, 211, 153, 0.16), transparent 70%),
+    radial-gradient(ellipse 60% 50% at 50% 108%, rgba(167, 139, 250, 0.12), transparent 70%),
+    linear-gradient(to bottom, transparent 60%, var(--color-ink));
+}
+
+/** Grille technique seule (sections, fonds de carte). */
+@utility grid-bg {
+  background-image:
+    linear-gradient(rgba(35, 42, 59, 0.45) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(35, 42, 59, 0.45) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+/** Masque en fondu (pour estomper une grille sur les bords). */
+@utility mask-fade {
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 30%, transparent 75%);
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 30%, transparent 75%);
+}
+
+/** Bordure dégradée (cartes mises en avant). */
+@utility edge-gradient {
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--color-go) 25%, transparent),
+    0 20px 50px -30px rgba(52, 211, 153, 0.5);
+}
+
+/** Grain très léger : évite les aplats « baveux » sur les dégradés. */
+@utility noise-layer {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  opacity: 0.035;
 }

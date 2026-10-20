@@ -19,6 +19,8 @@ export interface ExtractIgnored {
   systemFiles: number;
   gitDirs: number;
   outside: number;
+  /** Hardlinks (.tar) : jamais recréés, comme les symlinks. */
+  hardlinks?: number;
 }
 
 export interface ExtractResult {

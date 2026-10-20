@@ -45,7 +45,30 @@ describe("session chiffrée", () => {
       name: "Alice",
       avatar: "https://avatars.example/x.png",
       token: "gho_secret_token_value",
+      staffUnlocked: false,
     });
+  });
+
+  it("conserve le déverrouillage du panel staff, et rien d'autre ne le vaut", async () => {
+    const sealed = await sealSession({
+      login: "alice",
+      name: "Alice",
+      avatar: "",
+      token: "gho_secret_token_value",
+      staffUnlocked: true,
+    });
+    const opened = await openSession(sealed);
+    expect(opened?.staffUnlocked).toBe(true);
+
+    // Un cookie scellé sans le claim ne peut pas le faire apparaître : le JWE
+    // est authentifié, toute modification invalide le cookie (test suivant).
+    const plain = await sealSession({
+      login: "alice",
+      name: "Alice",
+      avatar: "",
+      token: "gho_secret_token_value",
+    });
+    expect((await openSession(plain))?.staffUnlocked).toBe(false);
   });
 
   it("rejette un cookie altéré", async () => {

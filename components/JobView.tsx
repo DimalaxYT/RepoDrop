@@ -361,6 +361,7 @@ function PreviewPanel({ job }: { job: JobRecord }) {
   if (p.ignored.systemFiles > 0)
     ignoredParts.push(`fichiers système (${p.ignored.systemFiles})`);
   if (p.ignored.symlinks > 0) ignoredParts.push(`symlinks (${p.ignored.symlinks})`);
+  if (p.ignored.hardlinks) ignoredParts.push(`hardlinks (${p.ignored.hardlinks})`);
   if (p.ignored.outside > 0) ignoredParts.push(`chemins bloqués (${p.ignored.outside})`);
 
   return (
@@ -368,8 +369,12 @@ function PreviewPanel({ job }: { job: JobRecord }) {
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
           <CardTitle>Aperçu de l'archive</CardTitle>
-          <Badge variant={job.format === "rar" ? "sky" : "muted"}>
-            {job.format?.toUpperCase()}
+          <Badge
+            variant={
+              job.format === "rar" ? "sky" : job.format === "tar" ? "default" : "muted"
+            }
+          >
+            {job.format === "tar" ? "TAR" : job.format?.toUpperCase()}
           </Badge>
         </div>
         <CardDescription>Ce qui sera poussé, après filtres de sécurité.</CardDescription>

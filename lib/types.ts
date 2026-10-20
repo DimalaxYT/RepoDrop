@@ -11,7 +11,7 @@ export type JobStatus =
   | "done" // poussé ✅
   | "failed"; // échec (error contient le message FR)
 
-export type ArchiveFormat = "zip" | "rar";
+export type ArchiveFormat = "zip" | "rar" | "tar";
 
 export interface PreviewEntry {
   /** Chemin relatif (dossier avec trailing /) */
@@ -27,9 +27,10 @@ export interface ArchivePreview {
   /** Chemins ignorés pendant l'extraction (sécurité / bruit) */
   ignored: {
     symlinks: number;
-    systemFiles: number; // .DS_Store, Thumbs.db, ...
+    systemFiles: number; // .DS_Store, Thumbs.db, périphériques, FIFO…
     gitDirs: number; // dossiers .git embarqués
     outside: number; // tentatives de path traversal
+    hardlinks?: number; // hardlinks .tar (jamais recréés)
   };
   /** Arborescence COMPLÈTE (tous les fichiers, toutes profondeurs, dossiers ancêtres) */
   tree: PreviewEntry[];
