@@ -26,6 +26,7 @@ export function Footer() {
             <FooterLink href="/import">Importer une archive</FooterLink>
             <FooterLink href="/#comment">Comment ça marche</FooterLink>
             <FooterLink href="/#securite">Sécurité</FooterLink>
+            <FooterLink href="/staff">Panel staff (dashboard)</FooterLink>
           </FooterCol>
 
           <FooterCol title="Formats pris en charge">

@@ -16,6 +16,7 @@ import {
   Terminal,
 } from "lucide-react";
 import { getSession } from "@/lib/session";
+import { isStaffLogin } from "@/lib/staff";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -101,6 +102,9 @@ export default async function Home() {
   const session = await getSession();
   const ctaHref = session ? "/import" : "/login";
   const ctaLabel = session ? "Importer une archive" : "Commencer avec GitHub";
+  // Le bouton « Dashboard » est visible pour tout le monde ; l'accès réel à
+  // /staff reste vérifié côté serveur (STAFF_LOGINS).
+  const staff = isStaffLogin(session?.login);
 
   return (
     <main className="flex-1">
@@ -146,6 +150,23 @@ export default async function Home() {
               >
                 Comment ça marche
               </a>
+              <Link
+                href="/staff"
+                className={cn(
+                  buttonVariants({
+                    variant: staff ? "secondary" : "ghost",
+                    size: "lg",
+                  }),
+                )}
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Dashboard
+                {staff && (
+                  <span className="ml-0.5 rounded-full bg-grape/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-grape ring-1 ring-grape/30">
+                    staff
+                  </span>
+                )}
+              </Link>
             </div>
 
             <ul className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-mist">
