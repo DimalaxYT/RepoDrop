@@ -80,7 +80,15 @@ export const config = {
   dbPath: process.env.DB_PATH ?? `${process.cwd()}/data/repodrop.db`,
 };
 
-/** Clé de session stable : SESSION_SECRET en prod, sinon aléatoire (sessions perdues au restart en dev). */
+/**
+ * Clé de session stable, dérivée de `SESSION_SECRET`.
+ *
+ * Sans ce secret, la clé serait tirée au hasard : chaque redémarrage
+ * invaliderait toutes les sessions **et** rendrait illisible le jeton Discord
+ * chiffré en base. Auparavant ce repli était silencieux — la panne n'apparaissait
+ * qu'après un déploiement, sous forme de données perdues. Il est maintenant
+ * refusé en production.
+ */
 let cachedKey: Buffer | null = null;
 export function sessionKey(): Buffer {
   if (cachedKey) return cachedKey;
@@ -89,6 +97,20 @@ export function sessionKey(): Buffer {
     cachedKey = crypto.createHash("sha256").update(config.sessionSecret).digest();
     return cachedKey;
   }
+  // `next build` s'exécute avec NODE_ENV=production sans charger le secret :
+  // NEXT_PHASE permet de ne pas faire échouer la compilation.
+  const isBuild = process.env.NEXT_PHASE === "phase-production-build";
+  if (process.env.NODE_ENV === "production" && !isBuild) {
+    throw new Error(
+      "SESSION_SECRET est absent : les sessions seraient invalidées et le jeton " +
+        "Discord chiffré illisible à chaque redémarrage. Renseignez SESSION_SECRET " +
+        "(32 caractères ou plus).",
+    );
+  }
+  console.warn(
+    "[config] SESSION_SECRET absent : clé de session aléatoire, les sessions " +
+      "seront perdues au redémarrage.",
+  );
   cachedKey = crypto.randomBytes(32);
   return cachedKey;
 }

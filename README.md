@@ -294,7 +294,7 @@ Limite de taille par défaut : **200 Mo** uploadés, **500 Mo** décompressés, 
 npm test
 ```
 
-252 tests couvrent :
+269 tests couvrent :
 
 - sanitisation (traversal Unix/Windows, absolus, NUL, profondeur) ;
 - extraction `.zip` réelle (fixtures `yazl` : nominal, bombes, symlinks, `.git`, limites) ;
@@ -316,9 +316,31 @@ npm test
 - **client GitHub en intégration HTTP réelle** contre `tests/mock-github.mjs`
   (fausse API versionnée dans le dépôt) : URLs et query string, en-tête
   `Authorization`, itération des pages, mappage des statuts HTTP en codes
-  métier, streaming d'archive octet pour octet.
+  métier, streaming d'archive octet pour octet ;
+- **en-têtes de sécurité** : contenu de la CSP par environnement, directives
+  obligatoires, et absence volontaire de `frame-ancestors` par défaut (l'aperçu
+  s'affiche dans une iframe).
 
 CI : GitHub Actions (lint + typecheck + tests + build) sur chaque push/PR.
+
+### En-têtes de sécurité
+
+Toutes les réponses portent une CSP, `X-Content-Type-Options: nosniff`,
+`Referrer-Policy`, `Permissions-Policy`, `X-DNS-Prefetch-Control` et HSTS. La
+logique vit dans `lib/security-headers.ts` (testée), câblée par `next.config.ts`.
+
+Deux points à connaître :
+
+- `script-src`/`style-src` conservent `'unsafe-inline'`, exigé par l'amorçage de
+  Next.js ; `'unsafe-eval'` n'est ajouté qu'en développement (React Refresh).
+- La protection anti-clickjacking est **opt-in** via `FRAME_ANCESTORS` (par
+  exemple `'self'`), et cette variable est lue **au build** : Next.js fige
+  `headers()` dans `.next/routes-manifest.json`.
+
+`SESSION_SECRET` est par ailleurs **obligatoire en production** : sans lui, la
+clé de session serait tirée au hasard, ce qui invaliderait les sessions et
+rendrait illisible le jeton Discord chiffré à chaque redémarrage. Le serveur
+refuse désormais de démarrer dans ce cas au lieu de le faire silencieusement.
 
 ---
 

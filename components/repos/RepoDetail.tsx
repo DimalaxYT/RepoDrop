@@ -370,6 +370,7 @@ export function RepoDetail({
           onClick={() => void loadTree(path, ref)}
           className="ml-2 inline-flex items-center gap-1 rounded px-1.5 py-1 text-mist transition-colors hover:bg-panel2 hover:text-chalk"
           title="Recharger ce dossier"
+          aria-label="Recharger ce dossier"
         >
           <RefreshCw className="h-3 w-3" />
         </button>
