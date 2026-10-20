@@ -6,8 +6,14 @@
  * Le jeton est write-only : le serveur ne le renvoie jamais, seulement un
  * masque (`mtok…••••1a2b`). Laisser le champ vide conserve la valeur stockée ;
  * le bouton « Effacer » la supprime.
+ *
+ * Les champs sont **hydratés depuis le serveur au montage** : changer d'onglet
+ * démontait ce composant et son remontage repartait des propriétés du
+ * chargement de page (données d'avant sauvegarde) — un « Enregistrer »
+ * depuis ce formulaire périmé écrasait le canal / la mention et désactivait
+ * le bot, donnant l'impression que tout avait été supprimé.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity as ActivityIcon,
   Bot,
@@ -62,11 +68,35 @@ export function DiscordSettings({
   // Erreur du rafraîchissement automatique : sans elle, une session expirée ou
   // un serveur en erreur figeait le panneau « État du bot » sans aucun indice.
   const [statusError, setStatusError] = useState<string | null>(null);
+  // true = les champs du formulaire reflètent la base (1ʳᵉ lecture réussie).
+  // Tant que c'est faux, l'enregistrement est bloqué : sauvegarder un
+  // formulaire jamais hydraté écraserait les réglages serveur avec des vides.
+  const [hydrated, setHydrated] = useState(false);
+  const hydratedRef = useRef(false);
 
-  // Rafraîchit l'état du moniteur (sonde en cours, prochaine exécution…).
-  const refreshStatus = useCallback(async () => {
+  /** Applique les réglages serveur au formulaire + à l'aperçu (pas au jeton). */
+  const applySettings = useCallback((s: DiscordSettingsView) => {
+    setSettings(s);
+    setChannelId(s.channelId);
+    setIntervalMin(String(s.intervalMin));
+    setProbeUrl(s.probeUrl);
+    setRoleMention(s.roleMention);
+    setHeartbeat(s.heartbeat);
+    setNotifyPush(s.notifyPush);
+    setAlertOnDown(s.alertOnDown);
+    setEnabled(s.enabled);
+    hydratedRef.current = true;
+    setHydrated(true);
+  }, []);
+
+  // Rafraîchissement automatique :
+  //  - à CHAQUE cycle : l'état du moniteur (badges, prochain ping, compteurs) ;
+  //  - au PREMIER cycle réussi seulement : les champs du formulaire, remplis
+  //    depuis la base. Les cycles suivants n'y touchent jamais (la saisie en
+  //    cours ne doit pas être écrasée).
+  const refresh = useCallback(async () => {
     try {
-      const res = await fetch("/api/staff/discord", { cache: "no-store" });
+      const res = await fetch("/api/staff/settings", { cache: "no-store" });
       if (!res.ok) {
         setStatusError(
           res.status === 401 || res.status === 403
@@ -75,20 +105,25 @@ export function DiscordSettings({
         );
         return;
       }
-      const body = (await res.json()) as { status?: MonitorStatus };
-      if (body.status) {
-        setStatus(body.status);
-        setStatusError(null);
+      const body = (await res.json()) as Partial<StaffSettingsResponse>;
+      setStatusError(null);
+      if (body.status) setStatus(body.status);
+      if (!hydratedRef.current && body.settings) {
+        // Le champ `token` n'est JAMAIS touché : il est write-only côté
+        // serveur, et une saisie déjà commencée ne doit pas être perdue.
+        applySettings(body.settings);
       }
     } catch {
       setStatusError("Actualisation impossible (serveur injoignable).");
     }
-  }, []);
+  }, [applySettings]);
 
   useEffect(() => {
-    const iv = setInterval(() => void refreshStatus(), 10_000);
+    void refresh(); // hydration immédiate au montage (attendre 10 s laissait
+    //                   le temps de cliquer « Enregistrer » sur un formulaire vide)
+    const iv = setInterval(() => void refresh(), 10_000);
     return () => clearInterval(iv);
-  }, [refreshStatus]);
+  }, [refresh]);
 
   const save = async (
     patch: Record<string, unknown>,
@@ -109,7 +144,10 @@ export function DiscordSettings({
         return false;
       }
       if (body.settings) {
-        setSettings(body.settings);
+        // Renvoie la vérité serveur au formulaire (valeurs bornées, jeton
+        // consigné…) — et marque l'hydratation comme faite si la sauvegarde
+        // a devancé le premier refresh.
+        applySettings(body.settings);
         setToken("");
       }
       if (body.status) setStatus(body.status);
@@ -360,7 +398,16 @@ export function DiscordSettings({
               {enabled ? "Bot actif" : "Bot désactivé"}
             </span>
             <div className="ml-auto flex flex-wrap gap-2">
-              <Button type="button" onClick={saveAll} disabled={busy !== null}>
+              <Button
+                type="button"
+                onClick={saveAll}
+                disabled={busy !== null || !hydrated}
+                title={
+                  hydrated
+                    ? undefined
+                    : "Récupération des réglages en cours… (réessayez dans un instant)"
+                }
+              >
                 {busy === "save" ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
