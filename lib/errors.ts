@@ -26,6 +26,7 @@ export type ErrorCode =
   | "INTERRUPTED"
   | "BAD_PATH"
   | "CONFIRM_MISMATCH"
+  | "ARCHIVE_TOO_BIG"
   | "INTERNAL";
 
 export class AppError extends Error {
@@ -72,6 +73,8 @@ const FR: Record<ErrorCode, string> = {
   BAD_PATH: "Chemin de fichier invalide.",
   CONFIRM_MISMATCH:
     "La confirmation ne correspond pas au nom du dépôt : rien n'a été supprimé.",
+  ARCHIVE_TOO_BIG:
+    "Ce dépôt est trop volumineux pour être téléchargé en une archive.",
   INTERNAL: "Erreur interne inattendue. Réessayez dans un instant.",
 };
 

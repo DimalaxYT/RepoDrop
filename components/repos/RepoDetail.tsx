@@ -13,6 +13,7 @@ import {
   ArrowLeft,
   ChevronRight,
   Copy,
+  Download,
   ExternalLink,
   File as FileIcon,
   FileCode,
@@ -272,6 +273,26 @@ export function RepoDetail({
                 </select>
               </label>
             )}
+            {/*
+              Téléchargement de l'archive du dépôt : simple lien, donc c'est le
+              navigateur qui suit la progression et enregistre le fichier.
+              `ref` suit le sélecteur de branche courant.
+            */}
+            {(["zip", "tar.gz"] as const).map((fmt) => (
+              <a
+                key={fmt}
+                href={`/api/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(
+                  repo.name,
+                )}/archive?format=${encodeURIComponent(fmt)}${
+                  ref ? `&ref=${encodeURIComponent(ref)}` : ""
+                }`}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-panel2 px-3 py-1.5 text-xs text-chalk ring-1 ring-edge transition-colors hover:bg-edge/60"
+                title={`Télécharger ${repo.full_name}${ref ? ` (${ref})` : ""} en .${fmt}`}
+              >
+                <Download className="h-3.5 w-3.5 text-go" />
+                .{fmt}
+              </a>
+            ))}
             <a
               href={repo.html_url}
               target="_blank"

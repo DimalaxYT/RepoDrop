@@ -257,3 +257,19 @@ amorçage, priorité base/environnement, seuil de blocage par IP).
 188 tests couvrent l'ensemble, dont 30 sur le client GitHub (validation des
 chemins, pagination, tri, base64, détection binaire, payloads PATCH/DELETE,
 traduction des erreurs, base d'API configurable).
+
+### Téléchargement d'un dépôt en archive (.zip / .tar.gz)
+
+| Ajout | Rôle |
+|---|---|
+| `ghRaw` | requête brute vers l'API GitHub, même traitement d'erreur que `gh`, pour les réponses non-JSON |
+| `streamArchive` | `zipball` / `tarball` de GitHub, corps renvoyé en flux (jamais bufferisé) |
+| `archiveFilename` | nom de fichier assaini : aucun séparateur ni caractère de contrôle ne sort du `Content-Disposition` |
+| `MAX_ARCHIVE_MB` (250 Mo) | taille annoncée vérifiée **avant** le premier octet transféré |
+| code `ARCHIVE_TOO_BIG` | message juste : `TOO_BIG` parlait de « contenu décompressé » et de `node_modules` |
+| `/api/repos/[owner]/[repo]/archive` | `?format=zip\|tar.gz&ref=`, lien direct donc progression gérée par le navigateur |
+| boutons `.zip` / `.tar.gz` | dans l'en-tête du dépôt, suivent la branche sélectionnée |
+
+196 tests couvrent l'ensemble, dont 8 sur l'archive (nom de fichier, endpoint
+par format, streaming octet pour octet, plafond de taille, dépôt vide, quota,
+validation avant appel).
