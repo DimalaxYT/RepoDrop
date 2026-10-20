@@ -123,6 +123,39 @@ décision. Les dossiers `.tar` sont donc acceptés au même titre que les archiv
 
 ---
 
+## Mes dépôts (`/repos`)
+
+Parcourir avant d'importer : la page liste les dépôts visibles par votre jeton
+(propriétaire + collaborateur, 300 au plus, les plus récents d'abord), avec
+filtre, tri et un mode « les miens ».
+
+| Ce qu'on peut faire | Comment |
+|---|---|
+| Voir le contenu d'un dépôt | clic sur un dépôt → arborescence, dossier par dossier |
+| Lire un fichier | clic sur le fichier : texte décodé, n° de lignes, langage, copie |
+| Changer de branche | sélecteur en haut du dépôt |
+| Renommer | onglet **Actions** → « Renommer / décrire » |
+| Passer public/privé | onglet **Actions** → visibilité |
+| Supprimer | onglet **Actions** → il faut retaper `owner/repo` |
+
+Garde-fous :
+
+- **chemins validés** : `..`, chemins absolus et octets nuls sont refusés avant
+  même d'appeler GitHub ;
+- **aperçu borné** : au-delà de 512 Ko, rien n'est transféré (lien vers GitHub) ;
+  un contenu non décodable en UTF-8 est signalé binaire, jamais deviné ;
+- **jamais d'HTML interprété** : le contenu s'affiche en texte dans un `<pre>`,
+  donc un `README.md` ou un SVG hostile ne peut rien exécuter ;
+- **droits vérifiés** : les boutons sont désactivés sans `push`/`admin` ;
+- **traçabilité** : renommage, changement de visibilité et suppression sont
+  journalisés dans le flux d'activité du panel staff (qui, quoi, quand, IP).
+
+> La suppression exige le scope OAuth **`delete_repo`**, désormais demandé à la
+> connexion. Un compte déjà connecté doit se **reconnecter** pour l'obtenir ;
+> sans lui GitHub répond 404 et l'application l'explique explicitement.
+
+---
+
 ## Panel staff (`/staff`)
 
 Aucun bouton visible n'y mène : c'est un outil staff. Trois portes discrètes,
@@ -246,7 +279,7 @@ Limite de taille par défaut : **200 Mo** uploadés, **500 Mo** décompressés, 
 npm test
 ```
 
-158 tests couvrent :
+188 tests couvrent :
 
 - sanitisation (traversal Unix/Windows, absolus, NUL, profondeur) ;
 - extraction `.zip` réelle (fixtures `yazl` : nominal, bombes, symlinks, `.git`, limites) ;

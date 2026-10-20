@@ -33,7 +33,10 @@ export async function GET(req: Request): Promise<Response> {
     // « workflow » : obligatoire pour écrire un fichier .github/workflows/*
     //   (sans lui, GitHub rejette le push : « refusing to allow an OAuth App
     //   to create or update workflow … without 'workflow' scope »).
-    scope: "repo workflow",
+    // `delete_repo` est indispensable à l'action « Supprimer le dépôt » du
+    // navigateur de dépôts : sans lui GitHub répond 404 (et non 403).
+    // Un compte déjà connecté doit se reconnecter pour l'obtenir.
+    scope: "repo workflow delete_repo",
     state,
     allow_signup: "true",
   });

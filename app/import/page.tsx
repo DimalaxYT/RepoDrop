@@ -1,5 +1,8 @@
 import { redirect } from "next/navigation";
-import { Archive, Eye, FolderArchive, ShieldCheck } from "lucide-react";
+import { Archive, Eye, FolderArchive, FolderSearch, ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { getSession } from "@/lib/session";
 import { config } from "@/lib/config";
 import { Uploader } from "@/components/Uploader";
@@ -46,6 +49,20 @@ export default async function ImportPage() {
               </span>
             ))}
           </div>
+        </div>
+
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-panel p-4 ring-1 ring-edge">
+          <p className="text-sm text-mist">
+            Vous voulez d'abord regarder ce qu'il y a déjà sur votre compte ?
+            Parcourez vos dépôts et leur contenu, sans rien envoyer.
+          </p>
+          <Link
+            href="/repos"
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+          >
+            <FolderSearch className="h-4 w-4" />
+            Parcourir mes dépôts
+          </Link>
         </div>
 
         <Uploader maxLabel={maxLabel} extractLabel={extractLabel} />

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, FolderSearch } from "lucide-react";
 import { getSession } from "@/lib/session";
 import { GitHubIcon, Wordmark } from "@/components/Brand";
 import { buttonVariants } from "@/components/ui/button";
@@ -35,6 +35,13 @@ export async function Header() {
 
           {session ? (
             <>
+              <Link
+                href="/repos"
+                className="hidden items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-mist transition-colors hover:bg-panel2 hover:text-chalk md:inline-flex"
+              >
+                <FolderSearch className="h-4 w-4" />
+                Mes dépôts
+              </Link>
               <Link
                 href="/import"
                 className={cn(buttonVariants({ size: "sm" }), "hidden sm:inline-flex")}

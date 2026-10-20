@@ -15,6 +15,14 @@ export const config = {
   github: {
     clientId: process.env.GITHUB_CLIENT_ID ?? "",
     clientSecret: process.env.GITHUB_CLIENT_SECRET ?? "",
+    /**
+     * Base de l'API REST. Surchargeable (GITHUB_API_URL) pour pointer vers un
+     * serveur de test : c'est ce qui permet de vérifier les routes sans jeton.
+     */
+    apiUrl: (process.env.GITHUB_API_URL ?? "https://api.github.com").replace(
+      /\/+$/,
+      "",
+    ),
     get configured() {
       return Boolean(this.clientId && this.clientSecret);
     },

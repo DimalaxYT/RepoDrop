@@ -238,3 +238,22 @@ format, Discord (messages, Gateway, moniteur), réglages chiffrés, accès staff
 
 158 tests couvrent l'ensemble (dont 12 sur le mot de passe : empreintes,
 amorçage, priorité base/environnement, seuil de blocage par IP).
+
+### Navigateur de dépôts (`/repos`)
+
+| Ajout | Rôle |
+|---|---|
+| `listRepos` / `getRepoInfo` / `listBranches` | liste paginée (plafond borné, `truncated` signalé), détails, branches |
+| `getTree` / `getBlob` | arborescence chargée dossier par dossier ; fichier décodé en UTF-8 strict |
+| `safeRepoPath` / `assertRepoName` / `safeRef` | validation avant tout appel réseau (`..`, absolu, octet nul, longueurs) |
+| `updateRepo` / `deleteRepo` | renommage, visibilité, description ; suppression avec confirmation exacte |
+| `MAX_VIEW_BYTES` (512 Ko) | plafond d'aperçu : rien n'est transféré au-delà |
+| `FetchImpl` injectable + `GITHUB_API_URL` | tests sans réseau et vérification contre une fausse API |
+| `/api/repos`, `/api/repos/[owner]/[repo]{,/tree,/blob,/branches}` | 5 routes, toutes derrière la session |
+| `RepoBrowser` / `RepoDetail` / `RepoActions` | liste + filtres, arborescence + aperçu, actions rapides |
+| codes `BAD_PATH` et `CONFIRM_MISMATCH` | messages FR justes (les codes « archive » et « push » ne s'appliquaient pas) |
+| scope OAuth `delete_repo` | indispensable à la suppression ; sinon GitHub répond 404 |
+
+188 tests couvrent l'ensemble, dont 30 sur le client GitHub (validation des
+chemins, pagination, tri, base64, détection binaire, payloads PATCH/DELETE,
+traduction des erreurs, base d'API configurable).
