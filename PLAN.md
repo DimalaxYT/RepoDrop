@@ -319,3 +319,28 @@ Deux pièges documentés dans le code plutôt que laissés à découvrir :
   l'affichage dans une iframe.
 
 269 tests couvrent l'ensemble, dont 17 sur les en-têtes de sécurité.
+
+### Navigation /repos partageable et restaurable
+
+Avant, dépôt sélectionné, branche, dossier et fichier vivaient dans des états
+React locaux : un rafraîchissement ou un lien partagé perdait le contexte.
+L'état est maintenant sérialisé dans l'URL :
+
+```text
+/repos?repo=dimalaxyt%2Fmon-projet&ref=main&path=src&file=src%2Findex.ts
+```
+
+- dépôt, branche (`ref`), dossier (`path`), fichier (`file`), filtre (`q`), tri
+  (`sort`) et filtre propriétaire (`mine`) ; valeurs par défaut omises ;
+- ouvrir un dépôt, changer de branche/dossier/fichier ajoute une entrée à
+  l'historique ; filtre et tri remplacent l'entrée courante, sans une entrée par
+  frappe ; retour/avance du navigateur suit les changements ;
+- un lien direct réhydrate le dépôt, l'arborescence et le contenu du fichier ;
+- validation stricte des noms de dépôt, refs et chemins avant chargement ; les
+  chemins absolus, `..`, `.` et séparateurs abusifs sont ignorés ;
+- `lib/repo-view.ts` est la logique pure testée, `tests/repo-view.test.ts` ajoute
+  21 cas, dont aller-retour Unicode, chemin hostile et lien complet.
+
+Vérifié en HTTP : `/repos` affiche la liste ; `/repos?repo=…&ref=main&path=src&file=src/index.ts`
+rend l'écran détail au lieu de la liste, répond 200 et inclut le fichier dans
+l'état RSC. Build, lint, typecheck et 290 tests passent.
