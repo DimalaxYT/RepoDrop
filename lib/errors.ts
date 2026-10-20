@@ -24,6 +24,8 @@ export type ErrorCode =
   | "SCOPE_MISSING"
   | "GIT_FAILED"
   | "INTERRUPTED"
+  | "BAD_PATH"
+  | "CONFIRM_MISMATCH"
   | "INTERNAL";
 
 export class AppError extends Error {
@@ -67,6 +69,9 @@ const FR: Record<ErrorCode, string> = {
     "GitHub refuse la modification des fichiers de workflow (.github/workflows/…) : le jeton n'a pas le scope « workflow ». Déconnectez-vous puis reconnectez-vous pour l'accorder.",
   GIT_FAILED: "Le push vers GitHub a échoué.",
   INTERRUPTED: "Le traitement a été interrompu (redémarrage du serveur).",
+  BAD_PATH: "Chemin de fichier invalide.",
+  CONFIRM_MISMATCH:
+    "La confirmation ne correspond pas au nom du dépôt : rien n'a été supprimé.",
   INTERNAL: "Erreur interne inattendue. Réessayez dans un instant.",
 };
 
