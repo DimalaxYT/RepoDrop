@@ -23,8 +23,10 @@ import {
   GitFork,
   Link2,
   Lock,
+  RefreshCw,
   Rocket,
   Search,
+  Trash2,
   Unlock,
 } from "lucide-react";
 import type { JobRecord, PreviewEntry } from "@/lib/types";
@@ -119,7 +121,9 @@ export function JobView({ initialJob }: { initialJob: JobRecord }) {
         <ReadyState job={job} onPushing={(j) => setJob(j)} />
       )}
       {job.status === "done" && job.push && <DoneState job={job} />}
-      {job.status === "failed" && <FailedState job={job} />}
+      {job.status === "failed" && (
+        <FailedState job={job} onPushing={(j) => setJob(j)} />
+      )}
     </div>
   );
 }
@@ -166,7 +170,48 @@ function PushingState() {
   );
 }
 
-function FailedState({ job }: { job: JobRecord }) {
+function FailedState({
+  job,
+  onPushing,
+}: {
+  job: JobRecord;
+  onPushing: (job: JobRecord) => void;
+}) {
+  // Relance « remplacer tout » : proposée uniquement quand elle peut
+  // débloquer la situation, c.-à-d. un rejet parce que le dépôt a avancé
+  // (non-fast-forward) lors d'un push vers un dépôt existant dont on a
+  // gardé les options. Pas besoin de ré-uploader l'archive.
+  const canReplaceRetry =
+    job.pushOpts?.mode === "existing" &&
+    Boolean(job.pushOpts.repo) &&
+    /changé entre-temps|non-fast-forward|\[rejected\]|fetch first/i.test(job.error ?? "");
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+
+  const retryReplace = useCallback(async () => {
+    if (!job.pushOpts) return;
+    setBusy(true);
+    setRetryError(null);
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/push`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...job.pushOpts, replaceAll: true }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (res.status === 202) {
+        onPushing({ ...job, status: "pushing", error: null });
+        return;
+      }
+      setRetryError(data.error ?? `Échec (HTTP ${res.status}).`);
+    } catch {
+      setRetryError("Connexion perdue. Réessayez.");
+    } finally {
+      setBusy(false);
+    }
+  }, [job, onPushing]);
+
   return (
     <Card className="animate-fade-in border-danger/30">
       <CardContent className="flex flex-col items-center gap-5 py-14 text-center">
@@ -179,6 +224,62 @@ function FailedState({ job }: { job: JobRecord }) {
             {job.error ?? "Erreur inconnue."}
           </p>
         </div>
+
+        {canReplaceRetry && (
+          <div className="w-full max-w-lg rounded-xl bg-amber/10 p-4 text-left ring-1 ring-amber/30">
+            <p className="flex items-start gap-2 text-sm leading-relaxed text-amber">
+              <Trash2 className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                Le dépôt <strong>{job.pushOpts?.repo}</strong> a avancé depuis votre import.
+                Vous pouvez écraser sa branche avec le contenu exact de cette archive :
+                les fichiers absents de l'archive seront supprimés du dépôt et le push
+                sera forcé. L'historique existant est conservé (nouveau commit par-dessus).
+              </span>
+            </p>
+            {confirming ? (
+              <div className="mt-3 flex flex-col gap-2">
+                <p className="text-xs text-amber">
+                  Confirmez-vous le remplacement complet du code de ce dépôt par cette archive ?
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="danger"
+                    disabled={busy}
+                    onClick={() => void retryReplace()}
+                  >
+                    {busy ? <Spinner /> : <RefreshCw className="h-4 w-4" />}
+                    {busy ? "Envoi…" : "Oui, remplacer tout le code"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => setConfirming(false)}
+                  >
+                    Annuler
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="danger"
+                className="mt-3"
+                onClick={() => setConfirming(true)}
+              >
+                <RefreshCw className="h-4 w-4" />
+                Réessayer en remplaçant tout le code
+              </Button>
+            )}
+            {retryError && (
+              <p role="alert" className="mt-2 text-xs text-danger">
+                {retryError}
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="flex flex-wrap justify-center gap-3">
           <Link href="/import" className={buttonVariants({})}>
             Réessayer avec une autre archive
@@ -451,6 +552,10 @@ function ReadyState({
   const [branchName, setBranchName] = useState("");
   const [commitMsg, setCommitMsg] = useState("");
 
+  // remplacement intégral (dépôt existant uniquement, destructif)
+  const [replaceAll, setReplaceAll] = useState(false);
+  const [replaceConfirm, setReplaceConfirm] = useState(false);
+
   // état réseau
   const [repos, setRepos] = useState<PushableRepo[] | null>(null);
   const [reposError, setReposError] = useState<string | null>(null);
@@ -490,8 +595,10 @@ function ReadyState({
   }, [repos, search]);
 
   const nameValid = REPO_NAME_RE.test(name.trim());
+  const replaceActive = dest === "existing" && replaceAll;
   const canPush =
     !busy &&
+    (!replaceActive || replaceConfirm) &&
     ((dest === "new" && nameValid) || (dest === "existing" && Boolean(selectedRepo)));
 
   const submit = useCallback(async () => {
@@ -506,6 +613,7 @@ function ReadyState({
         repo: dest === "existing" ? selectedRepo : undefined,
         dedicatedBranch: dedicated,
         branchName: dedicated ? branchName.trim() || undefined : undefined,
+        replaceAll: replaceActive,
         includeNodeModules: includeNM,
         stripRoot,
         commitMessage: commitMsg.trim() || undefined,
@@ -539,6 +647,7 @@ function ReadyState({
     stripRoot,
     visibility,
     branchName,
+    replaceActive,
   ]);
 
   const defaultBranchHint = `import/${job.filename.replace(/\.[^.]+$/, "").toLowerCase()}`;
@@ -743,6 +852,62 @@ function ReadyState({
               )}
             </div>
 
+            {/* remplacement intégral — dépôt existant uniquement */}
+            {dest === "existing" && (
+              <div
+                className={cn(
+                  "border-t border-edge/60 pt-4",
+                  replaceAll && "rounded-xl bg-danger/5 p-3 ring-1 ring-danger/25",
+                )}
+              >
+                <label className="flex cursor-pointer items-start gap-2.5 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={replaceAll}
+                    onChange={(e) => {
+                      setReplaceAll(e.target.checked);
+                      setReplaceConfirm(false);
+                    }}
+                    className="mt-0.5 h-4 w-4 accent-[#f87171]"
+                  />
+                  <span>
+                    <span className="flex items-center gap-1.5 font-medium text-chalk">
+                      <Trash2 className="h-4 w-4 text-danger" />
+                      Remplacer tout le code du dépôt
+                    </span>
+                    <span className="block text-xs font-normal text-mist">
+                      Le dépôt contiendra exactement les fichiers de l'archive : ceux qui
+                      n'y sont pas seront supprimés, et le push sera forcé — il réussira
+                      même si le dépôt a été modifié entre-temps (plus d'erreur
+                      « fetch first »). À utiliser quand l'archive est la nouvelle
+                      version complète du projet.
+                    </span>
+                  </span>
+                </label>
+                {replaceAll && (
+                  <label className="mt-3 flex cursor-pointer items-start gap-2.5 border-t border-danger/20 pt-3 text-sm text-danger">
+                    <input
+                      type="checkbox"
+                      checked={replaceConfirm}
+                      onChange={(e) => setReplaceConfirm(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 accent-[#f87171]"
+                    />
+                    <span>
+                      Je confirme : les fichiers du dépôt
+                      {selectedRepo ? (
+                        <>
+                          {" "}
+                          <code className="text-chalk">{selectedRepo}</code>
+                        </>
+                      ) : null}{" "}
+                      absents de cette archive seront définitivement supprimés de la
+                      branche poussée.
+                    </span>
+                  </label>
+                )}
+              </div>
+            )}
+
             {/* avancé */}
             <details className="group border-t border-edge/60 pt-4">
               <summary className="flex cursor-pointer list-none items-center gap-1.5 text-sm text-mist transition-colors hover:text-chalk">
@@ -774,10 +939,25 @@ function ReadyState({
               <span>{formError}</span>
             </div>
           )}
-          <Button size="lg" className="w-full" disabled={!canPush} onClick={() => void submit()}>
-            {busy ? <Spinner /> : <Rocket className="h-4 w-4" />}
-            {busy ? "Envoi…" : "Pousser sur GitHub"}
+          <Button
+            size="lg"
+            variant={replaceActive ? "danger" : "default"}
+            className="w-full"
+            disabled={!canPush}
+            onClick={() => void submit()}
+          >
+            {busy ? <Spinner /> : replaceActive ? <Trash2 className="h-4 w-4" /> : <Rocket className="h-4 w-4" />}
+            {busy
+              ? "Envoi…"
+              : replaceActive
+                ? "Remplacer tout le code sur GitHub"
+                : "Pousser sur GitHub"}
           </Button>
+          {replaceActive && !replaceConfirm && (
+            <p className="text-center text-xs text-danger">
+              Cochez la confirmation de remplacement pour activer le bouton.
+            </p>
+          )}
           <p className="text-center text-xs text-mist">
             Votre jeton GitHub reste dans un cookie chiffré — il n'est jamais écrit en base.
           </p>

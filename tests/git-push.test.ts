@@ -174,6 +174,74 @@ describe("runGitPush — dépôt existant", () => {
     expect(branches === "" || true).toBe(true);
   });
 
+  it("replaceAll : le dépôt devient exactement l'archive (fichiers absents supprimés)", async () => {
+    const bare = makeBare("replace-all", true);
+    const { jobDir, srcDir } = makeJob("replace-all", {
+      "nouveau.md": "# Version qui remplace tout\n",
+    });
+
+    await runGitPush({
+      jobDir,
+      srcDir,
+      token: "x",
+      target: { fullName: "test/replace-all", isEmpty: false, defaultBranch: "main" },
+      branch: "main",
+      commitMessage: "Remplacement complet",
+      authorLogin: "frank",
+      includeNodeModules: false,
+      replaceAll: true,
+      remoteUrl: bare,
+    });
+
+    // existing.txt a disparu : il ne reste QUE le contenu de l'archive…
+    const files = run(["ls-tree", "-r", "--name-only", "HEAD"], bare).split("\n");
+    expect(files).toEqual(["nouveau.md"]);
+    // …mais l'historique est conservé (commit par-dessus, pas d'orphelin).
+    expect(Number(run(["rev-list", "--count", "HEAD"], bare))).toBe(2);
+  });
+
+  it("replaceAll : force-push sur une branche divergente au lieu d'un rejet non-fast-forward", async () => {
+    const bare = makeBare("replace-force", true);
+
+    // Branche cible déjà existante avec un commit divergent (non basé sur main).
+    const seed = path.join(tmp, "replace-force-divergent");
+    run(["init", "-q", "-b", "main", seed]);
+    fs.writeFileSync(path.join(seed, "divergent.txt"), "commit divergent\n");
+    run(["checkout", "-q", "--orphan", "import/archive-test"], seed);
+    run(["-c", "user.name=seed", "-c", "user.email=seed@test", "add", "-A"], seed);
+    run(
+      ["-c", "user.name=seed", "-c", "user.email=seed@test", "commit", "-q", "-m", "divergent"],
+      seed,
+    );
+    run(["remote", "add", "origin", bare], seed);
+    run(["push", "-q", "origin", "import/archive-test"], seed);
+
+    const { jobDir, srcDir } = makeJob("replace-force", {
+      "app.js": "console.log('remplacement')\n",
+    });
+
+    // Sans --force, ce push serait rejeté ([rejected] non-fast-forward) :
+    // c'est l'échec « le dépôt a changé entre-temps » vu par l'utilisateur.
+    await runGitPush({
+      jobDir,
+      srcDir,
+      token: "x",
+      target: { fullName: "test/replace-force", isEmpty: false, defaultBranch: "main" },
+      branch: "import/archive-test",
+      commitMessage: "Remplacement complet",
+      authorLogin: "grace",
+      includeNodeModules: false,
+      replaceAll: true,
+      remoteUrl: bare,
+    });
+
+    const files = run(
+      ["ls-tree", "-r", "--name-only", "import/archive-test"],
+      bare,
+    ).split("\n");
+    expect(files).toEqual(["app.js"]);
+  });
+
   it("échoue avec NO_CHANGES si l'archive est identique au dépôt", async () => {
     const bare = makeBare("nochange", true);
     const { jobDir, srcDir } = makeJob("nochange", {
