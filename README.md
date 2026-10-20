@@ -137,6 +137,7 @@ filtre, tri et un mode « les miens ».
 | Renommer | onglet **Actions** → « Renommer / décrire » |
 | Passer public/privé | onglet **Actions** → visibilité |
 | Supprimer | onglet **Actions** → il faut retaper `owner/repo` |
+| **Télécharger en archive** | boutons **.zip** / **.tar.gz** en haut du dépôt |
 
 Garde-fous :
 
@@ -149,6 +150,20 @@ Garde-fous :
 - **droits vérifiés** : les boutons sont désactivés sans `push`/`admin` ;
 - **traçabilité** : renommage, changement de visibilité et suppression sont
   journalisés dans le flux d'activité du panel staff (qui, quoi, quand, IP).
+
+### Télécharger un dépôt en .zip / .tar.gz
+
+Deux boutons en haut de chaque dépôt, qui suivent la **branche sélectionnée** :
+`GET /api/repos/<owner>/<repo>/archive?format=zip|tar.gz&ref=<branche>`.
+
+- le corps est **streamé** : l'archive ne passe jamais entièrement en mémoire du
+  serveur ;
+- la taille annoncée par GitHub est contrôlée **avant le premier octet envoyé**
+  (plafond `MAX_ARCHIVE_MB`, 250 Mo par défaut) — au-delà, refus explicite ;
+- c'est un simple lien : le navigateur affiche la progression et enregistre le
+  fichier sous un nom lisible (`mon-projet-main.zip`), y compris avec des
+  caractères non ASCII (`filename*`, RFC 5987) ;
+- chaque téléchargement est journalisé (qui, quel dépôt, format, branche, poids).
 
 > La suppression exige le scope OAuth **`delete_repo`**, désormais demandé à la
 > connexion. Un compte déjà connecté doit se **reconnecter** pour l'obtenir ;
@@ -279,7 +294,7 @@ Limite de taille par défaut : **200 Mo** uploadés, **500 Mo** décompressés, 
 npm test
 ```
 
-188 tests couvrent :
+196 tests couvrent :
 
 - sanitisation (traversal Unix/Windows, absolus, NUL, profondeur) ;
 - extraction `.zip` réelle (fixtures `yazl` : nominal, bombes, symlinks, `.git`, limites) ;

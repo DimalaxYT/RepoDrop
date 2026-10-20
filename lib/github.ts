@@ -16,12 +16,16 @@ const HEADERS = (token: string): Record<string, string> => ({
   "User-Agent": "RepoDrop",
 });
 
-export async function gh<T>(
+/**
+ * Requête brute vers l'API GitHub, avec le même traitement d'erreur que `gh`.
+ * Sert aux réponses qui ne sont pas du JSON (archives à streamer).
+ */
+export async function ghRaw(
   token: string,
   path: string,
   init: RequestInit = { method: "GET" },
   fetchImpl: FetchImpl = fetch,
-): Promise<T> {
+): Promise<Response> {
   let res: Response;
   try {
     res = await fetchImpl(`${config.github.apiUrl}${path}`, {
@@ -54,6 +58,16 @@ export async function gh<T>(
     if (res.status === 403) throw new AppError("FORBIDDEN", undefined, body?.message);
     throw new AppError("INTERNAL", undefined, `GitHub ${res.status}`);
   }
+  return res;
+}
+
+export async function gh<T>(
+  token: string,
+  path: string,
+  init: RequestInit = { method: "GET" },
+  fetchImpl: FetchImpl = fetch,
+): Promise<T> {
+  const res = await ghRaw(token, path, init, fetchImpl);
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
@@ -599,4 +613,100 @@ export async function deleteRepo(
     }
     throw e;
   }
+}
+
+/* ------------------------------------------------------------------ *
+ * Archive d'un dépôt (.zip / .tar.gz)
+ * ------------------------------------------------------------------ */
+
+export type ArchiveFormat = "zip" | "tar.gz";
+
+/**
+ * Nom de fichier proposé au navigateur.
+ *
+ * Assaini : aucun séparateur ni caractère de contrôle ne peut sortir du
+ * `Content-Disposition` (ni injecter d'en-tête), et les noms non ASCII passent
+ * par `filename*` (RFC 5987).
+ */
+export function archiveFilename(
+  repo: string,
+  ref: string,
+  format: ArchiveFormat,
+): string {
+  const clean = (value: string, fallback: string) =>
+    value
+      .replace(/[\\/:*?"<>|\u0000-\u001f\u007f]/g, "-")
+      .replace(/^\.+/, "")
+      .slice(0, 80)
+      .trim() || fallback;
+  const ext = format === "zip" ? "zip" : "tar.gz";
+  return `${clean(repo, "depot")}-${clean(ref, "repo")}.${ext}`;
+}
+
+export interface ArchiveStream {
+  /** Flux brut : l'archive ne passe jamais entièrement en mémoire. */
+  body: ReadableStream<Uint8Array>;
+  contentType: string;
+  /** Taille annoncée par le serveur, 0 si inconnue. */
+  contentLength: number;
+  filename: string;
+}
+
+/**
+ * Récupère l'archive d'un dépôt depuis GitHub (`zipball` / `tarball`).
+ *
+ * GitHub répond par une redirection vers son CDN : `fetch` la suit, et le
+ * corps est renvoyé tel quel pour être streamé au navigateur. La taille est
+ * contrôlée AVANT de transférer quoi que ce soit.
+ */
+export async function streamArchive(
+  token: string,
+  owner: string,
+  repo: string,
+  ref: string,
+  format: ArchiveFormat,
+  fetchImpl: FetchImpl = fetch,
+): Promise<ArchiveStream> {
+  const o = assertRepoName(owner, "owner");
+  const r = assertRepoName(repo, "repo");
+  const branch = safeRef(ref);
+  const endpoint = format === "zip" ? "zipball" : "tarball";
+  const suffix = branch ? `/${encodeURIComponent(branch)}` : "";
+
+  let res: Response;
+  try {
+    res = await ghRaw(token, `/repos/${o}/${r}/${endpoint}${suffix}`, { method: "GET" }, fetchImpl);
+  } catch (e) {
+    // Dépôt sans aucun commit, ou branche inexistante : GitHub répond 404.
+    if (e instanceof AppError && e.code === "NOT_FOUND") {
+      throw new AppError(
+        "NOT_FOUND",
+        undefined,
+        "dépôt vide ou référence inconnue : aucune archive à produire",
+      );
+    }
+    throw e;
+  }
+
+  if (!res.body) {
+    throw new AppError("INTERNAL", undefined, "réponse de GitHub sans corps");
+  }
+
+  const contentLength = Number(res.headers.get("content-length") ?? 0) || 0;
+  if (contentLength > config.limits.maxArchiveBytes) {
+    throw new AppError(
+      "ARCHIVE_TOO_BIG",
+      undefined,
+      `archive annoncée à ${Math.round(contentLength / 1048576)} Mo, plafond ${Math.round(
+        config.limits.maxArchiveBytes / 1048576,
+      )} Mo`,
+    );
+  }
+
+  return {
+    body: res.body,
+    contentType: format === "zip" ? "application/zip" : "application/gzip",
+    contentLength,
+    filename: archiveFilename(r, branch, format),
+  };
 }

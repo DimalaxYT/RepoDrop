@@ -12,6 +12,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  archiveFilename,
   assertRepoName,
   deleteRepo,
   getBlob,
@@ -22,6 +23,7 @@ import {
   MAX_VIEW_BYTES,
   safeRef,
   safeRepoPath,
+  streamArchive,
   updateRepo,
   type FetchImpl,
 } from "@/lib/github";
@@ -432,5 +434,114 @@ describe("base de l'API configurable", () => {
 
     delete process.env.GITHUB_API_URL;
     vi.resetModules();
+  });
+});
+
+describe("archive d'un dépôt", () => {
+  /** Faux `fetch` renvoyant un corps binaire streamable. */
+  function binaryFetch(
+    bytes: Uint8Array,
+    headers: Record<string, string> = {},
+    calls: { url: string; init?: RequestInit }[] = [],
+  ): FetchImpl {
+    return (async (input: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(input), init });
+      // `Uint8Array<ArrayBufferLike>` n'est pas accepted tel quel par BodyInit
+      // depuis les génériques de tableaux typés (TS 5.7) : on copie le tampon.
+      const body = bytes.slice().buffer as ArrayBuffer;
+      return new Response(body, {
+        status: 200,
+        headers: { "Content-Type": "application/octet-stream", ...headers },
+      });
+    }) as unknown as FetchImpl;
+  }
+
+  it("construit un nom de fichier lisible et sans caractère dangereux", () => {
+    expect(archiveFilename("mon-projet", "main", "zip")).toBe("mon-projet-main.zip");
+    expect(archiveFilename("mon-projet", "feature/x", "tar.gz")).toBe(
+      "mon-projet-feature-x.tar.gz",
+    );
+    // Séparateurs, guillemets et caractères de contrôle ne passent pas.
+    const hostile = archiveFilename('a"b\rc', "../../x", "zip");
+    expect(hostile).not.toContain('"');
+    expect(hostile).not.toContain("\r");
+    expect(hostile).not.toContain("/");
+    expect(hostile.endsWith(".zip")).toBe(true);
+    // Repli quand tout est nettoyé.
+    expect(archiveFilename("...", "", "zip")).toBe("depot-repo.zip");
+    // Un nom très long est tronqué.
+    expect(archiveFilename("x".repeat(500), "main", "zip").length).toBeLessThanOrEqual(90);
+  });
+
+  it("demande zipball ou tarball, avec la branche encodée", async () => {
+    const zipCalls: { url: string; init?: RequestInit }[] = [];
+    await streamArchive(TOKEN, "o", "r", "main", "zip", binaryFetch(new Uint8Array([1]), {}, zipCalls));
+    expect(zipCalls[0].url).toContain("/repos/o/r/zipball/main");
+
+    const tarCalls: { url: string; init?: RequestInit }[] = [];
+    await streamArchive(TOKEN, "o", "r", "feature/x", "tar.gz", binaryFetch(new Uint8Array([1]), {}, tarCalls));
+    expect(tarCalls[0].url).toContain("/repos/o/r/tarball/feature%2Fx");
+  });
+
+  it("stream le corps sans le bufferiser et renvoie le bon type MIME", async () => {
+    const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x01, 0x02]);
+    const a = await streamArchive(TOKEN, "o", "r", "main", "zip", binaryFetch(bytes));
+    expect(a.contentType).toBe("application/zip");
+    expect(a.filename).toBe("r-main.zip");
+    expect(a.body).toBeInstanceOf(ReadableStream);
+
+    const chunks: Uint8Array[] = [];
+    const reader = a.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    const total = chunks.reduce((n, c) => n + c.length, 0);
+    expect(total).toBe(bytes.length);
+
+    const gz = await streamArchive(TOKEN, "o", "r", "", "tar.gz", binaryFetch(bytes));
+    expect(gz.contentType).toBe("application/gzip");
+  });
+
+  it("refuse une archive annoncée au-delà du plafond, avant tout transfert", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    const fetchImpl = binaryFetch(new Uint8Array([1]), {
+      "Content-Length": String(300 * 1024 * 1024), // 300 Mo > plafond de 250 Mo
+    }, calls);
+    const err = await streamArchive(TOKEN, "o", "r", "main", "zip", fetchImpl).catch((e) => e);
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).code).toBe("ARCHIVE_TOO_BIG");
+    expect(toUserMessage(err)).toContain("plafond");
+  });
+
+  it("accepte une archive sous le plafond et remonte sa taille", async () => {
+    const a = await streamArchive(
+      TOKEN, "o", "r", "main", "zip",
+      binaryFetch(new Uint8Array([1]), { "Content-Length": "1048576" }),
+    );
+    expect(a.contentLength).toBe(1048576);
+  });
+
+  it("un dépôt vide ou une branche inconnue est expliqué", async () => {
+    const fetchImpl = fakeFetch({ "/zipball/": json({ message: "Not Found" }, 404) });
+    const err = await streamArchive(TOKEN, "o", "r", "inconnue", "zip", fetchImpl).catch((e) => e);
+    expect((err as AppError).code).toBe("NOT_FOUND");
+    expect(toUserMessage(err)).toContain("dépôt vide");
+  });
+
+  it("un quota épuisé reste RATE_LIMITED", async () => {
+    const fetchImpl = fakeFetch({ "/zipball/": json({ message: "rate limit" }, 403) });
+    await expect(streamArchive(TOKEN, "o", "r", "main", "zip", fetchImpl)).rejects.toMatchObject({
+      code: "RATE_LIMITED",
+    });
+  });
+
+  it("valide le nom du dépôt avant d'appeler GitHub", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    await expect(
+      streamArchive(TOKEN, "o", "../x", "main", "zip", binaryFetch(new Uint8Array([1]), {}, calls)),
+    ).rejects.toThrow(AppError);
+    expect(calls).toHaveLength(0);
   });
 });

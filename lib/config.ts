@@ -59,6 +59,8 @@ export const config = {
     maxUploadBytes: int(process.env.MAX_UPLOAD_MB, 200) * 1024 * 1024,
     /** Poids max une fois décompressée */
     maxExtractBytes: int(process.env.MAX_EXTRACT_MB, 500) * 1024 * 1024,
+    /** Poids max d'une archive de dépôt téléchargée depuis /repos */
+    maxArchiveBytes: int(process.env.MAX_ARCHIVE_MB, 250) * 1024 * 1024,
     /** Nombre max de fichiers dans l'archive */
     maxFiles: int(process.env.MAX_FILES, 20_000),
     /** Ratio compression au-delà duquel on considère qu'il s'agit d'une bombe */
