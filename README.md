@@ -219,7 +219,7 @@ Limite de taille par défaut : **200 Mo** uploadés, **500 Mo** décompressés, 
 npm test
 ```
 
-144 tests couvrent :
+145 tests couvrent :
 
 - sanitisation (traversal Unix/Windows, absolus, NUL, profondeur) ;
 - extraction `.zip` réelle (fixtures `yazl` : nominal, bombes, symlinks, `.git`, limites) ;

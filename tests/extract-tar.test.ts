@@ -159,7 +159,12 @@ describe("extractTar — archives produites par GNU tar", () => {
 
     expect(res.fileCount).toBe(1);
     expect(res.ignored.hardlinks).toBe(1);
-    expect(fs.existsSync(path.join(res.dest, "double.txt"))).toBe(false);
+    // tar archive la 1re occurrence en fichier et la 2e en hardlink, dans
+    // l'ordre de readdir (non déterministe) : un seul des deux noms subsiste.
+    const written = fs.readdirSync(res.dest);
+    expect(written).toHaveLength(1);
+    expect(["vrai.txt", "double.txt"]).toContain(written[0]);
+    expect(fs.readFileSync(path.join(res.dest, written[0]), "utf8")).toBe("contenu\n");
   });
 
   it("ignore .git et le bruit système", async () => {
@@ -245,6 +250,7 @@ function tarHeader(opts: {
   size: number;
   typeflag?: string;
   prefix?: string;
+  linkname?: string;
   corruptChecksum?: boolean;
 }): Buffer {
   const b = Buffer.alloc(512);
@@ -256,6 +262,7 @@ function tarHeader(opts: {
   b.write(Math.floor(Date.now() / 1000).toString(8).padStart(11, "0") + "\0", 136, 12, "latin1");
   b.write("        ", 148, 8, "latin1");
   b.write(opts.typeflag ?? "0", 156, 1, "latin1");
+  if (opts.linkname) b.write(opts.linkname.slice(0, 100), 157, 100, "utf8");
   b.write("ustar\0", 257, 6, "latin1");
   b.write("00", 263, 2, "latin1");
   if (opts.prefix) b.write(opts.prefix.slice(0, 155), 345, 155, "utf8");
@@ -321,6 +328,23 @@ describe("extractTar — archives hostiles", () => {
       dataBlock("bbbb"),
     ]);
     await expect(extract(archive)).rejects.toMatchObject({ code: "UNSAFE_PATHS" });
+  });
+
+  it("n'écrit jamais le second nom d'un hardlink, quel que soit l'ordre", async () => {
+    // GNU tar archive la première occurrence en fichier régulier et la seconde
+    // en hardlink, dans l'ordre (non déterministe) de readdir. Ici l'ordre est
+    // imposé : le fichier d'abord, le hardlink ensuite.
+    const archive = writeRawTar([
+      tarHeader({ name: "garde.txt", size: 7 }),
+      dataBlock("contenu"),
+      tarHeader({ name: "double.txt", size: 0, typeflag: "1", linkname: "garde.txt" }),
+    ]);
+    const res = await extract(archive);
+
+    expect(res.fileCount).toBe(1);
+    expect(res.entries[0].path).toBe("garde.txt");
+    expect(res.ignored.hardlinks).toBe(1);
+    expect(fs.existsSync(path.join(res.dest, "double.txt"))).toBe(false);
   });
 
   it("ignore les périphériques et FIFO sans écrire de nœud spécial", async () => {

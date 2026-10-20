@@ -218,5 +218,5 @@ Ce qui a été livré en plus du périmètre initial :
 | **Journal d'activité** | Table `events` (push, upload, login/logout, settings, discord) + rétention 90 jours ; table `pings` pour l'historique de disponibilité (7 jours). |
 | **`GET /api/health`** | Sonde publique utilisée par le bot (et par le healthcheck Docker). |
 
-Tests : **144** (contre 71 en v1) — extraction tar réelle + hostile, détection de
+Tests : **145** (contre 71 en v1) — extraction tar réelle + hostile, détection de
 format, Discord (messages, Gateway, moniteur), réglages chiffrés, accès staff.
