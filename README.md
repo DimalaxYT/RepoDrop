@@ -294,7 +294,7 @@ Limite de taille par défaut : **200 Mo** uploadés, **500 Mo** décompressés, 
 npm test
 ```
 
-196 tests couvrent :
+252 tests couvrent :
 
 - sanitisation (traversal Unix/Windows, absolus, NUL, profondeur) ;
 - extraction `.zip` réelle (fixtures `yazl` : nominal, bombes, symlinks, `.git`, limites) ;
@@ -305,7 +305,18 @@ npm test
 - bot Discord : construction des embeds, routage webhook/bot, poignée de main Gateway (faux WebSocket), cycle du moniteur (sonde, ping forcé, push, panne) ;
 - réglages chiffrés (aucun secret en clair dans SQLite), journal d'activité, sondes de disponibilité ;
 - contrôle d'accès staff (`STAFF_LOGINS`, mode dev) ;
-- chiffrement de session et reconstruction de l'URL publique derrière un proxy.
+- chiffrement de session et reconstruction de l'URL publique derrière un proxy ;
+- **rate-limit persisté** : fenêtre glissante, expiration, délai annoncé, isolation
+  par clé, et surtout survie à un rechargement du module (les compteurs sont en
+  base, plus en mémoire — un redémarrage ne rend plus leurs essais aux clients) ;
+- **garde-fous de la couche jobs** : `sanitizeBranch` / `sanitizeRepoName`
+  refusent l'injection d'arguments git (nom commençant par `-`), les remontées
+  `..`, les refnames invalides ; `jobOwnedBy` ne rend jamais le job d'un autre
+  compte ;
+- **client GitHub en intégration HTTP réelle** contre `tests/mock-github.mjs`
+  (fausse API versionnée dans le dépôt) : URLs et query string, en-tête
+  `Authorization`, itération des pages, mappage des statuts HTTP en codes
+  métier, streaming d'archive octet pour octet.
 
 CI : GitHub Actions (lint + typecheck + tests + build) sur chaque push/PR.
 

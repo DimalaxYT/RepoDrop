@@ -23,8 +23,8 @@ export default tseslint.config(
     },
   },
   {
-    // Scripts Node purs (worker d'extraction .rar).
-    files: ["scripts/**/*.mjs", "lib/**/*.mjs"],
+    // Scripts Node purs (worker d'extraction .rar, fausse API GitHub des tests).
+    files: ["scripts/**/*.mjs", "lib/**/*.mjs", "tests/**/*.mjs"],
     languageOptions: {
       globals: {
         process: "readonly",

@@ -137,14 +137,26 @@ export function enqueuePush(jobId: string, opts: PushOptions, token: string): vo
 const REPO_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 const FULL_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}\/[A-Za-z0-9._-]{1,100}$/;
 
-function sanitizeBranch(name: string): string {
+/**
+ * Valide un nom de branche avant de le passer à git.
+ *
+ * Exporté pour être testé directement : c'est lui qui empêche l'injection
+ * d'arguments git (tout nom commençant par « - » est refusé) et les chemins
+ * qui remonteraient (« .. »).
+ */
+export function sanitizeBranch(name: string): string {
   const b = name.trim();
+  // Règles alignées sur `git check-ref-format` pour les cas courants : un nom
+  // accepté ici mais refusé par git ne produirait qu'un échec obscur au push.
   const valid =
     b.length >= 1 &&
     b.length <= 100 &&
     /^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(b) &&
     !b.includes("..") &&
+    !b.includes("//") && // deux barres obliques consécutives : refname invalide
+    !b.includes("@{") && // réservé par git (syntaxe de révision)
     !b.endsWith("/") &&
+    !b.endsWith(".") && // un refname ne peut pas se terminer par un point
     !b.endsWith(".lock");
   if (!valid) {
     throw new AppError("NAME_INVALID", undefined, "nom de branche invalide");
@@ -152,7 +164,8 @@ function sanitizeBranch(name: string): string {
   return b;
 }
 
-function sanitizeRepoName(name: string): string {
+/** Valide un nom de dépôt avant création sur GitHub (mêmes enjeux). */
+export function sanitizeRepoName(name: string): string {
   const n = name.trim();
   if (!REPO_NAME_RE.test(n)) {
     throw new AppError("NAME_INVALID", undefined, "nom de dépôt invalide");
