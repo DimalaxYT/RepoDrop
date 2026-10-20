@@ -294,7 +294,7 @@ Limite de taille par défaut : **200 Mo** uploadés, **500 Mo** décompressés, 
 npm test
 ```
 
-269 tests couvrent :
+290 tests couvrent :
 
 - sanitisation (traversal Unix/Windows, absolus, NUL, profondeur) ;
 - extraction `.zip` réelle (fixtures `yazl` : nominal, bombes, symlinks, `.git`, limites) ;
@@ -319,9 +319,28 @@ npm test
   métier, streaming d'archive octet pour octet ;
 - **en-têtes de sécurité** : contenu de la CSP par environnement, directives
   obligatoires, et absence volontaire de `frame-ancestors` par défaut (l'aperçu
-  s'affiche dans une iframe).
+  s'affiche dans une iframe) ;
+- **liens profonds `/repos`** : validation et aller-retour de l'état complet
+  dépôt / branche / dossier / fichier, filtre, tri et « Les miens », y compris
+  caractères Unicode et refus des chemins de traversée.
 
 CI : GitHub Actions (lint + typecheck + tests + build) sur chaque push/PR.
+
+### Liens profonds du navigateur de dépôts
+
+L'écran `/repos` garde son état de navigation dans la query string :
+
+```text
+/repos?repo=dimalaxyt%2Fmon-projet&ref=main&path=src&file=src%2Findex.ts
+```
+
+Le dépôt, la branche, le dossier et le fichier consultés sont restaurés au
+rafraîchissement et peuvent être partagés ; les boutons précédent/suivant du
+navigateur naviguent entre dépôt, dossier et fichier. Le filtre, le tri et
+« Les miens » sont aussi conservés (paramètres `q`, `sort`, `mine`). Les valeurs
+par défaut sont omises pour garder des URL propres. Chaque paramètre est validé
+avant utilisation : pas de `..`, de chemin absolu ni de branche mal formée.
+
 
 ### En-têtes de sécurité
 

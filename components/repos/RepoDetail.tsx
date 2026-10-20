@@ -30,6 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { RepoActions } from "./RepoActions";
 import { cn, formatBytes, timeAgo } from "@/lib/utils";
 import type { BlobView, Branch, RepoSummary, TreeEntry } from "@/lib/repo-types";
+import type { RepoView } from "@/lib/repo-view";
 
 /** Icône selon l'extension, pour repérer vite le type de fichier. */
 function iconFor(name: string) {
@@ -45,11 +46,15 @@ function iconFor(name: string) {
 
 export function RepoDetail({
   fullName,
+  view,
+  onViewChange,
   onBack,
   onChanged,
   onDeleted,
 }: {
   fullName: string;
+  view: RepoView;
+  onViewChange: (patch: Partial<RepoView>, push?: boolean) => void;
   onBack: () => void;
   /** Le dépôt a été renommé / modifié : la liste doit se rafraîchir. */
   onChanged: (next: RepoSummary) => void;
@@ -58,8 +63,10 @@ export function RepoDetail({
   const [owner, name] = fullName.split("/");
   const [repo, setRepo] = useState<RepoSummary | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
-  const [ref, setRef] = useState("");
-  const [path, setPath] = useState("");
+  // La branche, le dossier et le fichier sont des états de navigation : ils
+  // viennent de l'URL pour survivre au rafraîchissement et aux liens partagés.
+  const { ref, path, file: filePath } = view;
+  const activeRef = ref || repo?.default_branch || "";
   const [entries, setEntries] = useState<TreeEntry[] | null>(null);
   const [empty, setEmpty] = useState(false);
   const [file, setFile] = useState<BlobView | null>(null);
@@ -76,7 +83,6 @@ export function RepoDetail({
     setError("");
     setEntries(null);
     setFile(null);
-    setPath("");
     setBranches([]);
     setRepo(null);
 
@@ -97,7 +103,10 @@ export function RepoDetail({
           return;
         }
         setRepo(data.repo);
-        setRef(data.repo.default_branch);
+        // Un lien sans `ref` suit la branche par défaut, qui peut changer au
+        // renommage ou dans les réglages GitHub. On l'inscrit dans l'URL après
+        // avoir chargé les métadonnées.
+        if (!view.ref) onViewChange({ ref: data.repo.default_branch });
 
         const br = await fetch(
           `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/branches`,
@@ -115,7 +124,7 @@ export function RepoDetail({
     return () => {
       cancelled = true;
     };
-  }, [owner, name]);
+  }, [owner, name, onViewChange]);
 
   /** Charge le dossier courant. */
   const loadTree = useCallback(
@@ -155,34 +164,63 @@ export function RepoDetail({
   // Recharge le dossier dès qu'on navigue, qu'on change de branche, ou que le
   // dépôt vient d'être modifié (un renommage change l'identité de `repo`).
   useEffect(() => {
-    if (repo) void loadTree(path, ref);
-  }, [repo, path, ref, loadTree]);
+    if (repo) void loadTree(path, activeRef);
+  }, [repo, path, activeRef, loadTree]);
 
-  /** Ouvre un fichier. */
-  async function openFile(entry: TreeEntry) {
+  /** Charge le fichier indiqué dans l'URL (ouvre aussi les liens directs). */
+  useEffect(() => {
+    if (!repo || !filePath) {
+      setFile(null);
+      setFileLoading(false);
+      return;
+    }
+
+    let cancelled = false;
     setFileLoading(true);
     setError("");
-    try {
-      const qs = new URLSearchParams({ path: entry.path });
-      if (ref) qs.set("ref", ref);
-      const res = await fetch(
-        `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/blob?${qs}`,
-        { cache: "no-store" },
-      );
-      const data = (await res.json().catch(() => ({}))) as {
-        blob?: BlobView;
-        error?: string;
-      };
-      if (!res.ok || !data.blob) {
-        setError(data.error ?? `Fichier illisible (HTTP ${res.status}).`);
-        return;
+    const qs = new URLSearchParams({ path: filePath });
+    if (activeRef) qs.set("ref", activeRef);
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/blob?${qs}`,
+          { cache: "no-store" },
+        );
+        const data = (await res.json().catch(() => ({}))) as {
+          blob?: BlobView;
+          error?: string;
+        };
+        if (cancelled) return;
+        if (!res.ok || !data.blob) {
+          setError(data.error ?? `Fichier illisible (HTTP ${res.status}).`);
+          setFile(null);
+          return;
+        }
+        setFile(data.blob);
+      } catch {
+        if (!cancelled) {
+          setError("Impossible de joindre le serveur.");
+          setFile(null);
+        }
+      } finally {
+        if (!cancelled) setFileLoading(false);
       }
-      setFile(data.blob);
-    } catch {
-      setError("Impossible de joindre le serveur.");
-    } finally {
-      setFileLoading(false);
-    }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [repo, owner, name, filePath, activeRef]);
+
+  /** La sélection du fichier est portée par l'URL ; l'effet ci-dessus le charge. */
+  function openFile(entry: TreeEntry) {
+    onViewChange({ file: entry.path }, true);
+  }
+
+  /** Navigue dans l'arborescence et abandonne l'aperçu de fichier courant. */
+  function navigatePath(nextPath: string) {
+    onViewChange({ path: nextPath, file: "" }, true);
   }
 
   async function copyContent() {
@@ -258,10 +296,9 @@ export function RepoDetail({
                 <GitBranch className="h-3.5 w-3.5 text-go" />
                 <select
                   value={ref}
-                  onChange={(e) => {
-                    setRef(e.target.value);
-                    setPath("");
-                  }}
+                  onChange={(e) =>
+                    onViewChange({ ref: e.target.value, path: "", file: "" }, true)
+                  }
                   className="max-w-[12rem] truncate bg-transparent text-chalk outline-none"
                 >
                   {branches.map((b) => (
@@ -337,7 +374,7 @@ export function RepoDetail({
       <nav className="flex flex-wrap items-center gap-1 text-xs">
         <button
           type="button"
-          onClick={() => setPath("")}
+          onClick={() => navigatePath("")}
           className={cn(
             "rounded px-1.5 py-1 transition-colors hover:bg-panel2",
             path ? "text-go" : "text-chalk",
@@ -353,7 +390,7 @@ export function RepoDetail({
               <ChevronRight className="h-3 w-3 text-mist/60" />
               <button
                 type="button"
-                onClick={() => setPath(target)}
+                onClick={() => navigatePath(target)}
                 disabled={last}
                 className={cn(
                   "rounded px-1.5 py-1 transition-colors",
@@ -407,7 +444,7 @@ export function RepoDetail({
                   <li key={entry.path}>
                     <button
                       type="button"
-                      onClick={() => (isDir ? setPath(entry.path) : void openFile(entry))}
+                      onClick={() => (isDir ? navigatePath(entry.path) : openFile(entry))}
                       className={cn(
                         "flex w-full items-center gap-2.5 px-4 py-2 text-left text-sm transition-colors",
                         active ? "bg-go/10 text-chalk" : "text-mist hover:bg-panel2 hover:text-chalk",

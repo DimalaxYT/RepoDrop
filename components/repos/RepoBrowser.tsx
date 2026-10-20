@@ -9,8 +9,9 @@
  * aucune requête supplémentaire, donc aucune consommation de quota GitHub en
  * tapant dans le champ de recherche.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   Archive,
@@ -32,16 +33,49 @@ import {
   type RepoSort,
   type RepoSummary,
 } from "@/lib/repo-types";
+import { parseRepoView, serializeRepoView, type RepoView } from "@/lib/repo-view";
 
 export function RepoBrowser({ login }: { login: string }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [repos, setRepos] = useState<RepoSummary[] | null>(null);
   const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<RepoSort>("pushed");
-  const [onlyMine, setOnlyMine] = useState(false);
-  const [selected, setSelected] = useState("");
+
+  /**
+   * Filtre, tri et dépôt consulté vivent dans l'URL (`?repo=&q=&sort=&mine=`).
+   *
+   * Auparavant c'étaient de simples `useState` : un rafraîchissement, un retour
+   * arrière ou un lien partagé ramenaient à la liste, en perdant le dépôt en
+   * cours de consultation.
+   */
+  const view = useMemo(
+    () => parseRepoView(new URLSearchParams(searchParams.toString())),
+    [searchParams],
+  );
+  const { query, sort, onlyMine } = view;
+  const selected = view.repo;
+
+  /**
+   * Écrit l'état dans l'URL. `push` uniquement pour l'ouverture d'un dépôt, afin
+   * que le bouton retour du navigateur revienne à la liste ; le reste est un
+   * `replace`, pour ne pas saturer l'historique à chaque frappe.
+   */
+  const update = (patch: Partial<RepoView>, push = false) => {
+    const href = `/repos${serializeRepoView({ ...view, ...patch })}`;
+    if (push) router.push(href, { scroll: false });
+    else router.replace(href, { scroll: false });
+  };
+  // Stable pour RepoDetail : le chargement du dépôt ne doit pas redémarrer à
+  // chaque mise à jour de l'URL (dossier/fichier/branche).
+  const updateRef = useRef(update);
+  updateRef.current = update;
+  const handleViewChange = useCallback(
+    (patch: Partial<RepoView>, push = false) => updateRef.current(patch, push),
+    [],
+  );
 
   async function load() {
     setLoading(true);
@@ -97,18 +131,20 @@ export function RepoBrowser({ login }: { login: string }) {
     return (
       <RepoDetail
         fullName={selected}
-        onBack={() => setSelected("")}
+        view={view}
+        onViewChange={handleViewChange}
+        onBack={() => update({ repo: "", ref: "", path: "", file: "" })}
         onChanged={(next) => {
           setRepos((prev) =>
             (prev ?? []).map((r) =>
               r.full_name === selected || r.full_name === next.full_name ? next : r,
             ),
           );
-          setSelected(next.full_name);
+          update({ repo: next.full_name, ref: "", path: "", file: "" });
         }}
         onDeleted={(fullName) => {
           setRepos((prev) => (prev ?? []).filter((r) => r.full_name !== fullName));
-          setSelected("");
+          update({ repo: "", ref: "", path: "", file: "" });
         }}
       />
     );
@@ -122,7 +158,7 @@ export function RepoBrowser({ login }: { login: string }) {
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-mist" />
           <Input
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => update({ query: e.target.value })}
             placeholder="Filtrer par nom, description ou langage…"
             className="pl-9"
             aria-label="Filtrer les dépôts"
@@ -131,7 +167,7 @@ export function RepoBrowser({ login }: { login: string }) {
 
         <select
           value={sort}
-          onChange={(e) => setSort(e.target.value as RepoSort)}
+          onChange={(e) => update({ sort: e.target.value as RepoSort })}
           aria-label="Trier"
           className="h-10 rounded-lg bg-panel2 px-3 text-sm text-chalk ring-1 ring-edge outline-none focus-visible:ring-2 focus-visible:ring-go/50"
         >
@@ -144,7 +180,7 @@ export function RepoBrowser({ login }: { login: string }) {
 
         <Button
           variant={onlyMine ? "secondary" : "outline"}
-          onClick={() => setOnlyMine((v) => !v)}
+          onClick={() => update({ onlyMine: !onlyMine })}
         >
           <Lock className="h-4 w-4" />
           Les miens
@@ -205,7 +241,7 @@ export function RepoBrowser({ login }: { login: string }) {
               <li key={r.full_name}>
                 <button
                   type="button"
-                  onClick={() => setSelected(r.full_name)}
+                  onClick={() => update({ repo: r.full_name, ref: "", path: "", file: "" }, true)}
                   className="group flex w-full flex-col gap-2 rounded-2xl bg-panel p-4 text-left ring-1 ring-edge transition-colors hover:bg-panel2 hover:ring-go/30"
                 >
                   <span className="flex w-full items-center gap-2">
