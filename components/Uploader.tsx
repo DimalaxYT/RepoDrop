@@ -14,7 +14,7 @@ interface Props {
   extractLabel: string;
 }
 
-const OK_EXT = /\.(rar|zip)$/i;
+const OK_EXT = /\.(rar|zip|tar|tar\.gz|tar\.z|tgz|tpz)$/i;
 
 export function Uploader({ maxLabel, extractLabel }: Props) {
   const router = useRouter();
@@ -27,7 +27,9 @@ export function Uploader({ maxLabel, extractLabel }: Props) {
     (file: File) => {
       setError(null);
       if (!OK_EXT.test(file.name)) {
-        setError("Format non supporté : seuls les fichiers .rar et .zip sont acceptés.");
+        setError(
+          "Format non supporté : seuls les fichiers .rar, .zip, .tar et .tar.gz sont acceptés.",
+        );
         return;
       }
       if (file.size === 0) {
@@ -81,7 +83,7 @@ export function Uploader({ maxLabel, extractLabel }: Props) {
       <div
         role="button"
         tabIndex={0}
-        aria-label="Déposer une archive .rar ou .zip"
+        aria-label="Déposer une archive .rar, .zip ou .tar"
         onClick={() => !uploading && inputRef.current?.click()}
         onKeyDown={(e) => {
           if ((e.key === "Enter" || e.key === " ") && !uploading) inputRef.current?.click();
@@ -102,7 +104,7 @@ export function Uploader({ maxLabel, extractLabel }: Props) {
         <input
           ref={inputRef}
           type="file"
-          accept=".rar,.zip,application/x-rar-compressed,application/zip"
+          accept=".rar,.zip,.tar,.tar.gz,.tgz,.tar.z,.tpz,application/x-rar-compressed,application/zip,application/x-tar,application/gzip"
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0];
@@ -140,7 +142,7 @@ export function Uploader({ maxLabel, extractLabel }: Props) {
                 Glissez votre archive ici, ou cliquez pour parcourir
               </p>
               <p className="mt-1 text-sm text-mist">
-                .rar &amp; .zip — {maxLabel} max ({extractLabel} décompressés)
+                .rar, .zip, .tar &amp; .tar.gz — {maxLabel} max ({extractLabel} décompressés)
               </p>
             </div>
           </>

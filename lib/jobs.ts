@@ -10,7 +10,15 @@ import path from "node:path";
 import fs from "node:fs";
 import { AppError, toUserMessage } from "./errors";
 import { config } from "./config";
-import { getJob, updateJob, failStaleJobs, getJobRow } from "./db";
+import {
+  getJob,
+  updateJob,
+  failStaleJobs,
+  getJobRow,
+  logEvent,
+  pruneEvents,
+} from "./db";
+import { announcePush, ensureDiscordMonitor } from "./discord/monitor";
 import { extractArchive } from "./extract";
 import { buildPreview } from "./extract/preview";
 import { runGitPush, type PushTarget } from "./git";
@@ -62,6 +70,14 @@ export function ensureWorkerInit(): void {
   sweep();
   const t = setInterval(sweep, 10 * 60_000);
   t.unref?.();
+  pruneEvents(90 * 24 * 3_600_000); // rétention du journal d'activité : 90 jours
+
+  // Bot Discord : démarré avec le worker (no-op si non configuré/désactivé).
+  try {
+    ensureDiscordMonitor();
+  } catch (e) {
+    console.error("[worker] moniteur Discord :", e);
+  }
 }
 
 // ---------------------------------------------------------------- extraction
@@ -234,10 +250,59 @@ async function runPush(
         created,
       },
     });
+
+    // Journal d'activité (panel staff) + annonce Discord.
+    const files = job.preview?.fileCount ?? 0;
+    const bytes = job.preview?.totalSize ?? 0;
+    logEvent({
+      kind: "push",
+      login: job.login,
+      detail: {
+        ok: true,
+        jobId,
+        repo: target.fullName,
+        branch,
+        sha: result.sha,
+        files,
+        bytes,
+        filename: job.filename,
+        created,
+        mode: opts.mode,
+      },
+    });
+    void announcePush({
+      login: job.login,
+      ok: true,
+      repo: target.fullName,
+      branch,
+      sha: result.sha,
+      files,
+      bytes,
+      filename: job.filename,
+      at: Date.now(),
+    });
   } catch (err) {
     // Log serveur sans token (le token n'apparaît jamais dans les erreurs).
     console.error(`[job ${jobId}] push failed:`, err);
-    updateJob(jobId, { status: "failed", error: toUserMessage(err) });
+    const message = toUserMessage(err);
+    updateJob(jobId, { status: "failed", error: message });
+    logEvent({
+      kind: "push",
+      login: job.login,
+      detail: {
+        ok: false,
+        jobId,
+        filename: job.filename,
+        error: message.slice(0, 300),
+      },
+    });
+    void announcePush({
+      login: job.login,
+      ok: false,
+      filename: job.filename,
+      error: message,
+      at: Date.now(),
+    });
     if (created) {
       console.error(
         `[job ${jobId}] le dépôt a été créé mais le push a échoué (dépôt laissé vide)`,

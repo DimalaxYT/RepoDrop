@@ -7,6 +7,8 @@ import { config } from "@/lib/config";
 import { getViewer } from "@/lib/github";
 import { setSessionCookie } from "@/lib/session";
 import { isSecureRequest, redirectTo } from "@/lib/http";
+import { clientIp } from "@/lib/ratelimit";
+import { logEvent } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -61,8 +63,10 @@ export async function GET(req: Request): Promise<Response> {
     return fail("oauth");
   }
 
+  let login = "";
   try {
     const viewer = await getViewer(token);
+    login = viewer.login;
     await setSessionCookie(
       {
         login: viewer.login,
@@ -77,5 +81,11 @@ export async function GET(req: Request): Promise<Response> {
     return fail("oauth");
   }
 
+  logEvent({
+    kind: "login",
+    login,
+    ip: clientIp(req.headers),
+    detail: { via: "oauth" },
+  });
   return redirectTo("/import");
 }

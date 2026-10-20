@@ -8,6 +8,8 @@ import { config } from "@/lib/config";
 import { getViewer } from "@/lib/github";
 import { setSessionCookie } from "@/lib/session";
 import { isSecureRequest, redirectTo } from "@/lib/http";
+import { clientIp } from "@/lib/ratelimit";
+import { logEvent } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -19,8 +21,9 @@ export async function GET(req: Request): Promise<Response> {
   if (!token) {
     return redirectTo("/login?error=devauth");
   }
+  let viewer: Awaited<ReturnType<typeof getViewer>>;
   try {
-    const viewer = await getViewer(token);
+    viewer = await getViewer(token);
     await setSessionCookie(
       {
         login: viewer.login,
@@ -34,5 +37,11 @@ export async function GET(req: Request): Promise<Response> {
     console.error("[dev-login] /user en échec:", e);
     return redirectTo("/login?error=devauth");
   }
+  logEvent({
+    kind: "login",
+    login: viewer.login,
+    ip: clientIp(req.headers),
+    detail: { via: "dev" },
+  });
   return redirectTo("/import");
 }

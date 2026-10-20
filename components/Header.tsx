@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArrowUpRight } from "lucide-react";
 import { getSession } from "@/lib/session";
 import { Wordmark, GitHubIcon } from "@/components/Brand";
 import { buttonVariants } from "@/components/ui/button";
@@ -9,13 +10,28 @@ export async function Header() {
   const session = await getSession();
 
   return (
-    <header className="sticky top-0 z-40 border-b border-edge/70 bg-ink/80 backdrop-blur-md">
-      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
-        <Link href="/" className="text-chalk hover:opacity-90 transition-opacity">
+    <header className="sticky top-0 z-40 border-b border-edge/70 glass">
+      {/* Filet lumineux : rappelle l'accent du produit. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-go/45 to-transparent"
+      />
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
+        <Link
+          href="/"
+          className="group flex items-center text-chalk transition-opacity hover:opacity-90"
+        >
           <Wordmark />
         </Link>
 
-        <nav className="flex items-center gap-2 sm:gap-3">
+        <nav className="flex items-center gap-1.5 sm:gap-2">
+          <Link
+            href="/#comment"
+            className="hidden rounded-lg px-3 py-2 text-sm text-mist transition-colors hover:bg-panel2 hover:text-chalk md:inline-block"
+          >
+            Comment ça marche
+          </Link>
+
           {session ? (
             <>
               <Link
@@ -23,6 +39,12 @@ export async function Header() {
                 className={cn(buttonVariants({ size: "sm" }), "hidden sm:inline-flex")}
               >
                 Importer une archive
+              </Link>
+              <Link
+                href="/import"
+                className={cn(buttonVariants({ size: "sm", variant: "secondary" }), "sm:hidden")}
+              >
+                Importer
               </Link>
               <span className="flex items-center gap-2 rounded-full bg-panel2 py-1 pl-1 pr-3 ring-1 ring-edge">
                 {session.avatar ? (
@@ -50,12 +72,16 @@ export async function Header() {
             </>
           ) : (
             <>
-              <Link href="/login" className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}>
+              <Link
+                href="/login"
+                className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
+              >
                 Connexion
               </Link>
               <Link href="/login" className={cn(buttonVariants({ size: "sm" }))}>
                 <GitHubIcon />
-                Commencer
+                <span className="hidden sm:inline">Commencer</span>
+                <ArrowUpRight className="h-3.5 w-3.5 sm:hidden" />
               </Link>
             </>
           )}

@@ -201,3 +201,22 @@ DEV_AUTH=1                  # mock login en dev seulement
 1. **Nom du produit** — suggestions : *RepoDrop*, *RAR2Repo*, *Archive2Repo*, *PushMyCode* ? (reste modifiable partout en 1 constante)
 2. **UI 100 % FR** pour la v1, ou FR + EN dès maintenant ?
 3. **node_modules dans les archives** : le garder, le strip par défaut, ou case à cocher dans l'aperçu ? *(ma reco : case à cocher, strip par défaut)*
+
+---
+
+## 13. v1.1 — ajoutée après la v1
+
+Ce qui a été livré en plus du périmètre initial :
+
+| Ajout | Détail |
+|---|---|
+| **Refonte visuelle** | Thème enrichi (halos animés, grille, dégradés, verre dépoli), hero en deux colonnes avec maquette animée du produit, bandeau de chiffres, cartes « formats » et « sécurité », pied de page global en colonnes, pages connexion/import retravaillées. |
+| **`.tar` / `.tar.gz`** | Lecteur ustar/GNU/PAX maison (`lib/extract/tar.ts`), zéro dépendance native, streaming + gunzip à la volée ; détection par magic bytes (offset 257) avec décompression partielle pour les `.tar.gz` ; mêmes garde-fous que zip/rar (traversal, bombes, symlinks, hardlinks, `.git`). |
+| **Bot Discord** | Client sans dépendance (REST + Gateway), sonde de disponibilité toutes les N minutes (défaut 10) avec embed d'état, alerte en cas de panne (avec mention), annonce de chaque push, historique des sondes en base. |
+| **Panel staff (`/staff`)** | Accès par allowlist `STAFF_LOGINS` ; onglets **Activité** (qui a poussé quoi, quand, avec dépôt/branche/SHA/volume/IP, filtres, export CSV), **Discord** (jeton configurable depuis le dashboard, write-only et chiffré), **Système** (disponibilité + configuration). |
+| **Porte cachée** | Point invisible du pied de page (5 clics) ou séquence Konami → `/staff` ; l'accès réel reste vérifié côté serveur. |
+| **Journal d'activité** | Table `events` (push, upload, login/logout, settings, discord) + rétention 90 jours ; table `pings` pour l'historique de disponibilité (7 jours). |
+| **`GET /api/health`** | Sonde publique utilisée par le bot (et par le healthcheck Docker). |
+
+Tests : **144** (contre 71 en v1) — extraction tar réelle + hostile, détection de
+format, Discord (messages, Gateway, moniteur), réglages chiffrés, accès staff.

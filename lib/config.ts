@@ -21,6 +21,24 @@ export const config = {
   },
   /** Mode dev : bouton de connexion directe (jamais en prod) */
   devAuth: process.env.DEV_AUTH === "1",
+  /**
+   * Comptes GitHub autorisés sur le panel staff (`STAFF_LOGINS=a,b`).
+   * Vide + DEV_AUTH=1 : n'importe quel compte connecté (pratique en dev).
+   */
+  staffLogins: (process.env.STAFF_LOGINS ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
+  /**
+   * Amorçage du bot Discord par variables d'environnement (Docker).
+   * Le panel staff a TOUJOURS priorité : ce qui est en base gagne.
+   */
+  discord: {
+    token:
+      process.env.DISCORD_BOT_TOKEN ?? process.env.DISCORD_WEBHOOK_URL ?? "",
+    channelId: process.env.DISCORD_CHANNEL_ID ?? "",
+    intervalMin: int(process.env.DISCORD_PING_MINUTES, 10),
+  },
   /** Cookie de session chiffré (>= 32 octets) */
   sessionSecret: process.env.SESSION_SECRET ?? "", //résolu paresseusement
   limits: {

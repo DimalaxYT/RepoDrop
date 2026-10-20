@@ -1,5 +1,5 @@
 /**
- * POST /api/upload — réception d'une archive (.rar/.zip) en multipart.
+ * POST /api/upload — réception d'une archive (.rar/.zip/.tar[.gz]) en multipart.
  *
  * Flux : busboy streame vers /tmp/repodrop-jobs/<id>/upload.<ext>
  * (jamais de buffer complet en mémoire), puis on valide les magic bytes.
@@ -17,9 +17,9 @@ import { json, jsonError } from "@/lib/http";
 import { frMessage } from "@/lib/errors";
 import { getSession } from "@/lib/session";
 import { clientIp, rateLimit } from "@/lib/ratelimit";
-import { insertJob } from "@/lib/db";
+import { insertJob, logEvent } from "@/lib/db";
 import { ensureWorkerInit, enqueueExtraction } from "@/lib/jobs";
-import { detectFormat } from "@/lib/extract";
+import { DETECT_HEAD_BYTES, detectArchive } from "@/lib/extract";
 
 export const dynamic = "force-dynamic";
 
@@ -61,14 +61,19 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     // Validation des magic bytes APRÈS réception (fichier déjà sur disque).
+    // 16 Ko : assez long pour voir le magic `ustar` d'un .tar (offset 257)
+    // et pour décompresser le début d'un .tar.gz.
     const fd = fs.openSync(result.archivePath, "r");
-    const head = Buffer.alloc(8);
-    const read = fs.readSync(fd, head, 0, 8, 0);
+    const head = Buffer.alloc(DETECT_HEAD_BYTES);
+    const read = fs.readSync(fd, head, 0, DETECT_HEAD_BYTES, 0);
     fs.closeSync(fd);
-    const format = detectFormat(head.subarray(0, read));
+    const format = await detectArchive(
+      head.subarray(0, read),
+      result.filename,
+    );
     if (!format) {
       return jsonError(
-        "Ce fichier n'est pas une archive .zip ou .rar valide.",
+        "Ce fichier n'est pas une archive .zip, .rar ou .tar valide.",
         415,
       );
     }
@@ -90,6 +95,17 @@ export async function POST(req: Request): Promise<Response> {
       ip,
     });
     cleanup = false;
+    logEvent({
+      kind: "upload",
+      login: session.login,
+      ip,
+      detail: {
+        jobId: id,
+        filename: result.filename,
+        format,
+        archiveSize: result.size,
+      },
+    });
     enqueueExtraction(id);
     return json({ id }, 202);
   } catch (err) {
